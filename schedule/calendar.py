@@ -129,9 +129,10 @@ def user_week(project, first, selected='', now=None):
     times = [t for t in ALL_TIMES if project.time_start <= t < project.time_end]
 
     def cell(availability, t):
-        # 所要時間ぶん予約できる枠だけ◯にする。それ以外は理由にかかわらず「×」
+        # 所要時間ぶん予約できる枠だけ◯（押せる）にする。
+        # 空いているが、ここからは所要時間ぶんの空きがない枠は薄い◯（押せない）。それ以外は理由にかかわらず「×」
         if not availability.startable(t):
-            return None
+            return {'faint': True} if availability.free(t) else None
         slot = availability.slots[t]
         return {'slot': slot, 'label': slot.label(project.duration), 'checked': str(slot.pk) == selected}
 

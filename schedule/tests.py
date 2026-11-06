@@ -141,6 +141,21 @@ class DurationBufferTests(TestCase):
         self.assertContains(response, 'この日時は予約できなくなりました')
         self.assertNotContains(self.client.get(reverse('timeframe', args=['dur'])), f'value="{self.slot(20).pk}"')
 
+    def test_faint_cells(self):
+        # 21:00 を閉じると、20:00 からは予約できるが、20:30 は空いているのに始められないので薄い◯
+        closed = self.slot(21)
+        self.project.time_end = datetime.time(22)
+        self.project.save()
+        closed.closed = True
+        closed.save()
+        from .calendar import user_week
+        week = user_week(self.project, datetime.date.today() + datetime.timedelta(days=1))
+        rows = {r['time']: r['cells'][0] for r in week['rows']}
+        self.assertEqual(rows['20:00']['slot'].pk, self.slot(20).pk)
+        self.assertEqual(rows['20:30'], {'faint': True})
+        self.assertIsNone(rows['21:00'])
+        self.assertTrue(rows['21:30'] is None or rows['21:30'] == {'faint': True})
+
     def test_user_page_shows_duration(self):
         page = self.client.get(reverse('timeframe', args=['dur']))
         self.assertContains(page, '所要時間：1時間')

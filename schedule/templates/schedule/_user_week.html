@@ -14,7 +14,9 @@
                 <th class="time">{{ row.time }}</th>
                 {% for cell in row.cells %}
                 <td>
-                    {% if cell %}
+                    {% if cell.faint %}
+                    <span class="mark mark--faint" title="ここから始めると所要時間ぶんの空きがありません">◯</span>
+                    {% elif cell %}
                     <input type="radio" name="slot" value="{{ cell.slot.pk }}" id="slot{{ cell.slot.pk }}" data-label="{{ cell.label }}" {% if cell.checked %}checked{% endif %}>
                     <label for="slot{{ cell.slot.pk }}">◯</label>
                     {% else %}

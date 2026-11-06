@@ -61,6 +61,12 @@
         cursor: pointer;
     }
 
+    /* 空いているが、ここからは所要時間ぶんの空きがないので選べない枠 */
+    .mark--faint {
+        color: #C9CED4;
+        cursor: not-allowed;
+    }
+
     /* マスにのせたとき・選んだときは、所要時間ぶんのマスに色を付ける */
     .grid td.span-hover {
         background-color: var(--primary-selected);
