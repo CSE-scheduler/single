@@ -39,9 +39,16 @@ CLOSE_HOURS_MAX = 24
 CLOSE_DAYS_MAX = 7
 
 # 所要時間（30分〜4時間の30分刻み）と、予約の前後を自動で閉じる時間（バッファ）
-DURATION_CHOICES = list(range(SLOT_MINUTES, 241, SLOT_MINUTES))
-BUFFER_SIDES = [('before', '前'), ('after', '後ろ'), ('both', '前後')]
-BUFFER_CHOICES = [0, 30, 60, 90, 120]
+# 所要時間は 0〜4時間 と 00〜50分（10分刻み）で選ぶ。予約は30分の枠を、所要時間に足りるだけ使う
+DURATION_HOURS = list(range(0, 5))
+DURATION_MINUTES = list(range(0, 60, 10))
+BUFFER_SIDES = [('before', '予約の前'), ('after', '予約の後ろ'), ('both', '予約の前後')]
+BUFFER_CHOICES = [30, 60, 90, 120]
+
+
+def slot_count(minutes):
+    """所要時間に使う30分の枠の数（例：30分→1つ、40分〜1時間→2つ）"""
+    return max(1, -(-minutes // SLOT_MINUTES))
 
 
 def minutes_label(minutes):
@@ -140,9 +147,10 @@ class Project(models.Model):
     close_value = models.PositiveSmallIntegerField(default=2)
     # 所要時間（分）。予約するとこの時間ぶんの枠がふさがる
     duration = models.PositiveSmallIntegerField('所要時間', default=SLOT_MINUTES)
-    # 予約された枠の前・後ろ・前後を、buffer_minutes 分だけ自動で閉じる（0なら閉じない）
+    # バッファ：buffer_enabled のとき、予約された枠の前・後ろ・前後を buffer_minutes 分だけ自動で閉じる
+    buffer_enabled = models.BooleanField(default=False)
     buffer_side = models.CharField(max_length=10, choices=BUFFER_SIDES, default='both')
-    buffer_minutes = models.PositiveSmallIntegerField(default=0)
+    buffer_minutes = models.PositiveSmallIntegerField(default=30)
 
     # 最初の画面（同意画面）
     consent_text = models.TextField('最初の画面の文言', blank=True, default=DEFAULT_CONSENT_TEXT)
@@ -229,13 +237,17 @@ class Project(models.Model):
 
     @property
     def buffer_before(self):
-        minutes = self.buffer_minutes if self.buffer_side in ('before', 'both') else 0
+        minutes = self.buffer_minutes if self.buffer_enabled and self.buffer_side in ('before', 'both') else 0
         return datetime.timedelta(minutes=minutes)
 
     @property
     def buffer_after(self):
-        minutes = self.buffer_minutes if self.buffer_side in ('after', 'both') else 0
+        minutes = self.buffer_minutes if self.buffer_enabled and self.buffer_side in ('after', 'both') else 0
         return datetime.timedelta(minutes=minutes)
+
+    @property
+    def slot_count(self):
+        return slot_count(self.duration)
 
     def duration_label(self):
         return minutes_label(self.duration)
@@ -333,6 +345,11 @@ class Reservation(models.Model):
     @property
     def end(self):
         return self.slot.start + datetime.timedelta(minutes=self.duration)
+
+    @property
+    def occupied_end(self):
+        """この予約がふさぐ枠の終わり（所要時間を30分の枠に切り上げる。例：10:00から40分 → 11:00）"""
+        return self.slot.start + datetime.timedelta(minutes=SLOT_MINUTES * slot_count(self.duration))
 
     def label(self, with_year=False):
         return time_range_label(self.slot.start, self.duration, with_year)

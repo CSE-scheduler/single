@@ -4,8 +4,8 @@ import os
 from django import forms
 
 from .models import (
-    BUFFER_CHOICES, BUFFER_SIDES, CLOSE_DAYS_MAX, CLOSE_HOURS_MAX, DURATION_CHOICES, FIELDS, SEX_CHOICES,
-    TIME_OPTIONS, Project, minutes_label, validate_project_name,
+    BUFFER_CHOICES, BUFFER_SIDES, CLOSE_DAYS_MAX, CLOSE_HOURS_MAX, DURATION_HOURS, DURATION_MINUTES, FIELDS,
+    SEX_CHOICES, TIME_OPTIONS, Project, validate_project_name,
 )
 
 # 説明書としてアップロードできるファイル（拡張子 → 配信するときの種類）
@@ -45,26 +45,30 @@ CLOSE_CHOICES = (
 
 
 class PeriodForm(forms.ModelForm):
+    """募集予約カレンダーの設定（募集期間・所要時間・自動で閉鎖する枠・バッファ）"""
     time_start = forms.TypedChoiceField(choices=TIME_CHOICES[:-1], coerce=lambda v: datetime.time.fromisoformat(v))
     time_end = forms.TypedChoiceField(choices=TIME_CHOICES[1:], coerce=lambda v: datetime.time.fromisoformat(v))
     close = forms.ChoiceField(choices=CLOSE_CHOICES)
-    duration = forms.TypedChoiceField(choices=[(m, minutes_label(m)) for m in DURATION_CHOICES], coerce=int)
-    buffer_side = forms.ChoiceField(choices=BUFFER_SIDES)
-    buffer_minutes = forms.TypedChoiceField(
-        choices=[(0, '閉じない')] + [(m, minutes_label(m)) for m in BUFFER_CHOICES if m], coerce=int,
-    )
+    duration_hours = forms.TypedChoiceField(choices=[(h, str(h)) for h in DURATION_HOURS], coerce=int)
+    duration_minutes = forms.TypedChoiceField(choices=[(m, f'{m:02d}') for m in DURATION_MINUTES], coerce=int)
+    # バッファを設けないときは、これらの欄は送られてこない（入力できない）ので、今の値のままにする
+    buffer_side = forms.ChoiceField(choices=BUFFER_SIDES, required=False)
+    buffer_minutes = forms.TypedChoiceField(choices=[(m, str(m)) for m in BUFFER_CHOICES], coerce=int,
+                                            required=False, empty_value=None)
 
     class Meta:
         model = Project
-        fields = ['period_start', 'period_end', 'time_start', 'time_end', 'duration', 'buffer_side', 'buffer_minutes']
+        fields = ['period_start', 'period_end', 'time_start', 'time_end', 'buffer_enabled', 'buffer_side', 'buffer_minutes']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if not self.is_bound:
-            self.initial['time_start'] = f'{self.instance.time_start:%H:%M}'
-            self.initial['time_end'] = f'{self.instance.time_end:%H:%M}'
-            value = self.instance.close_value if self.instance.close_mode in ('hours', 'days') else 0
-            self.initial['close'] = f'{self.instance.close_mode}:{value}'
+            project = self.instance
+            self.initial['time_start'] = f'{project.time_start:%H:%M}'
+            self.initial['time_end'] = f'{project.time_end:%H:%M}'
+            value = project.close_value if project.close_mode in ('hours', 'days') else 0
+            self.initial['close'] = f'{project.close_mode}:{value}'
+            self.initial['duration_hours'], self.initial['duration_minutes'] = divmod(project.duration, 60)
 
     def clean(self):
         cleaned = super().clean()
@@ -76,11 +80,21 @@ class PeriodForm(forms.ModelForm):
                 self.add_error('period_end', '終了日は今日から1年以内にしてください。')
         t_start, t_end = cleaned.get('time_start'), cleaned.get('time_end')
         if t_start and t_end and t_start >= t_end:
-            self.add_error('time_end', '一番遅い時刻は、一番早い時刻より後にしてください。')
+            self.add_error('time_end', '終了時刻は開始時刻より後にしてください。')
+        hours, minutes = cleaned.get('duration_hours'), cleaned.get('duration_minutes')
+        if hours is not None and minutes is not None:
+            if hours * 60 + minutes == 0:
+                self.add_error('duration_minutes', '所要時間を入力してください。')
+            else:
+                self.instance.duration = hours * 60 + minutes
         if cleaned.get('close'):
             mode, value = cleaned['close'].split(':')
             self.instance.close_mode = mode
             self.instance.close_value = int(value)
+        if not cleaned.get('buffer_side'):
+            cleaned['buffer_side'] = self.instance.buffer_side
+        if not cleaned.get('buffer_minutes'):
+            cleaned['buffer_minutes'] = self.instance.buffer_minutes
         return cleaned
 
 

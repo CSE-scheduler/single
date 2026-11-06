@@ -89,6 +89,10 @@ def home(request):
     })
 
 
+def _errors(form):
+    return {name: [str(e) for e in errors] for name, errors in form.errors.items()}
+
+
 @admin_required
 def project_edit(request, project):
     project = get_object_or_404(Project, name=project)
@@ -97,22 +101,35 @@ def project_edit(request, project):
     url_name = project.name
     form = ProjectForm(instance=project)
     period_form = PeriodForm(instance=project)
+    # 設定は入力したその場で自動保存する（JavaScriptから送られ、結果をJSONで返す）
+    autosave = request.headers.get('x-requested-with') == 'fetch'
     if request.method == 'POST' and request.POST.get('action') == 'period':
         period_form = PeriodForm(request.POST, instance=project)
         if period_form.is_valid():
             project = period_form.save()
             project.ensure_slots()
-            messages.success(request, '募集期間を保存しました。')
+            if autosave:
+                starts, index = admin_week_starts(project)
+                return JsonResponse({'ok': True, 'starts': [d.isoformat() for d in starts], 'index': index})
+            messages.success(request, '保存しました。')
             return redirect('setting_project', project.name)
-        messages.error(request, '募集期間の入力に誤りがあります。')
+        if autosave:
+            return JsonResponse({'ok': False, 'errors': _errors(period_form)})
+        messages.error(request, '入力に誤りがあります。')
         project = Project.objects.get(pk=project.pk)
         form = ProjectForm(instance=project)
     elif request.method == 'POST':
         form = ProjectForm(request.POST, request.FILES, instance=project)
         if form.is_valid():
+            manual_changed = bool(form.cleaned_data.get('manual') or form.cleaned_data.get('manual_clear'))
             project = form.save()
-            messages.success(request, '設定を保存しました。')
+            if autosave:
+                # 説明書を変えたときは、表示（今の説明書の名前）を新しくするために画面を読みなおす
+                return JsonResponse({'ok': True, 'reload': manual_changed})
+            messages.success(request, '保存しました。')
             return redirect('setting_project', project.name)
+        if autosave:
+            return JsonResponse({'ok': False, 'errors': _errors(form)})
         messages.error(request, '入力に誤りがあります。赤字の部分を確認してください。')
 
     fields = []

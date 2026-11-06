@@ -54,7 +54,7 @@ def timeframe(request, project):
         'starts': [d.isoformat() for d in starts],
         'index': index,
         'week': user_week(project, starts[index], selected) if starts else None,
-        'span': project.duration // SLOT_MINUTES,
+        'span': project.slot_count,
     }
     return render(request, 'schedule/timeframe.html', params)
 

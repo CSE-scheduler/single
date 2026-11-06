@@ -91,6 +91,7 @@ class DurationBufferTests(TestCase):
         self.assertTrue(can_book(self.project, self.slot(15, 30)))
 
     def test_buffer_before(self):
+        self.project.buffer_enabled = True
         self.project.buffer_side, self.project.buffer_minutes = 'before', 30
         self.project.save()
         self.book(12)
@@ -103,6 +104,7 @@ class DurationBufferTests(TestCase):
         self.assertTrue(can_book(self.project, self.slot(13, 30)))
 
     def test_buffer_both(self):
+        self.project.buffer_enabled = True
         self.project.buffer_side, self.project.buffer_minutes = 'both', 60
         self.project.save()
         self.book(12)
@@ -374,7 +376,7 @@ class SettingTests(TestCase):
         later = datetime.date.today() + datetime.timedelta(days=200)
         response = self.client.post(url, {'action': 'period', 'period_start': str(datetime.date.today()),
                                           'period_end': str(later), 'time_start': '09:00', 'time_end': '18:00',
-                                          'close': 'hours:2', 'duration': '30', 'buffer_side': 'both', 'buffer_minutes': '0'})
+                                          'close': 'hours:2', 'duration_hours': '0', 'duration_minutes': '30'})
         self.assertRedirects(response, url)
         project.refresh_from_db()
         self.assertEqual((project.period_end, project.time_start, project.time_end),
@@ -382,16 +384,57 @@ class SettingTests(TestCase):
         self.assertTrue(project.slots.filter(start__date=later).exists())  # 90日より先の終了日でも枠を作る
 
         bad = self.client.post(url, {'action': 'period', 'period_start': str(later), 'period_end': str(datetime.date.today()),
-                                     'time_start': '18:00', 'time_end': '09:00', 'close': 'hours:2', 'duration': '30', 'buffer_side': 'both', 'buffer_minutes': '0'})
+                                     'time_start': '18:00', 'time_end': '09:00', 'close': 'hours:2', 'duration_hours': '0', 'duration_minutes': '30'})
         self.assertContains(bad, '終了日は開始日より後にしてください')
-        self.assertContains(bad, '一番遅い時刻は')
+        self.assertContains(bad, '終了時刻は開始時刻より後に')
+
+    def test_autosave(self):
+        login(self.client)
+        project = Project.objects.create(name='auto')
+        url = reverse('setting_project', args=['auto'])
+        fetch = {'HTTP_X_REQUESTED_WITH': 'fetch'}
+        period = {'action': 'period', 'period_start': str(project.period_start), 'period_end': str(project.period_end),
+                  'time_start': '09:00', 'time_end': '21:00', 'close': 'today:0',
+                  'duration_hours': '0', 'duration_minutes': '40'}
+        response = self.client.post(url, period, **fetch)
+        self.assertTrue(response.json()['ok'])
+        self.assertIn('starts', response.json())
+        project.refresh_from_db()
+        self.assertEqual((project.duration, project.slot_count, project.buffer_enabled), (40, 2, False))
+        # バッファをオンにすると、送られた時間で保存する
+        response = self.client.post(url, {**period, 'buffer_enabled': 'on', 'buffer_side': 'after', 'buffer_minutes': '90'}, **fetch)
+        project.refresh_from_db()
+        self.assertEqual((project.buffer_enabled, project.buffer_side, project.buffer_minutes), (True, 'after', 90))
+        # オフにすると、選んでいた値は残したまま無効にする（選べない欄は送られてこない）
+        self.client.post(url, period, **fetch)
+        project.refresh_from_db()
+        self.assertEqual((project.buffer_enabled, project.buffer_side, project.buffer_minutes), (False, 'after', 90))
+        self.assertEqual(project.buffer_after, datetime.timedelta(0))
+        # 誤りはJSONで返し、保存しない
+        bad = self.client.post(url, {**period, 'duration_minutes': '0'}, **fetch).json()
+        self.assertFalse(bad['ok'])
+        self.assertIn('duration_minutes', bad['errors'])
+        project.refresh_from_db()
+        self.assertEqual(project.duration, 40)
+        # 文言などの設定も自動保存
+        response = self.client.post(url, {'action': 'settings', 'consent_text': 'こんにちは', 'use_mail': 'on'}, **fetch)
+        self.assertEqual(response.json(), {'ok': True, 'reload': False})
+        project.refresh_from_db()
+        self.assertEqual(project.consent_text, 'こんにちは')
+        page = self.client.get(url)
+        self.assertNotContains(page, '設定を保存')
+        self.assertContains(page, '使用する時間枠：<b id="slot-count">2</b>つ')
+
+    def test_slot_count(self):
+        from .models import slot_count
+        self.assertEqual([slot_count(m) for m in (10, 30, 40, 60, 70, 290)], [1, 1, 2, 2, 3, 10])
 
     def test_close_setting_form(self):
         login(self.client)
         project = Project.objects.create(name='p3')
         url = reverse('setting_project', args=['p3'])
         base = {'action': 'period', 'period_start': str(project.period_start), 'period_end': str(project.period_end),
-                'time_start': '09:00', 'time_end': '21:00', 'duration': '30', 'buffer_side': 'both', 'buffer_minutes': '0'}
+                'time_start': '09:00', 'time_end': '21:00', 'duration_hours': '0', 'duration_minutes': '30'}
         page = self.client.get(url)
         self.assertContains(page, '<option value="hours:2" selected>今から2時間以内</option>', html=False)
         for value, expected in [('hours:24', ('hours', 24)), ('today:0', ('today', 0)),

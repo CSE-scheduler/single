@@ -208,6 +208,33 @@ input[type="checkbox"] {
     margin: 0;
 }
 
+/* プルダウン。右の「V」は右端から12pxあけて描く */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 6px 36px 6px 10px;
+    font: inherit;
+    color: inherit;
+    border: 2px solid var(--gray-light);
+    border-radius: 4px;
+    background-color: var(--white);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    cursor: pointer;
+}
+
+select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+select:disabled {
+    color: var(--gray-medium);
+    background-color: #F7F8FA;
+    cursor: not-allowed;
+}
+
 /* はい・いいえ、性別などの選択肢（main.cssのラジオボタンの見た目を使う） */
 .choices {
     display: flex;

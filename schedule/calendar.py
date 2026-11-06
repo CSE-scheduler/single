@@ -36,7 +36,7 @@ class Availability:
         self.project = project
         self.now = now or datetime.datetime.now()
         self.cutoff = project.close_cutoff(self.now)
-        self.need = datetime.timedelta(minutes=project.duration)
+        self.need = SLOT * project.slot_count
         # 範囲の外にある予約やバッファも影響するので、前後1日ぶん余分に読む
         slots = project.slots.filter(start__gte=first - DAY, start__lt=last + DAY)
         self.slots = {s.start: s for s in slots}
@@ -46,9 +46,9 @@ class Availability:
         self.occupied = {}
         self.blocked = set()
         for r in reservations:
-            for t in _steps(r.start, r.end):
+            for t in _steps(r.start, r.occupied_end):
                 self.occupied[t] = r
-            for t in _steps(r.start - project.buffer_before, r.end + project.buffer_after):
+            for t in _steps(r.start - project.buffer_before, r.occupied_end + project.buffer_after):
                 self.blocked.add(t)
 
     def free(self, t):

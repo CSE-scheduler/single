@@ -107,39 +107,77 @@
         padding: 4px 0;
     }
 
-    .period-form {
+    /* 募集予約カレンダーの設定（4段） */
+    .calendar-settings {
         display: flex;
-        align-items: flex-start;
-        flex-wrap: wrap;
-        gap: 16px;
+        flex-direction: column;
+        gap: 12px;
         padding: 16px 20px;
-        margin-bottom: 8px;
+        margin-bottom: 16px;
         background-color: var(--primary-hover);
         border-radius: var(--border-radius-base);
     }
 
-    .period-form .form-group {
-        width: auto;
-        margin: 0;
-    }
-
-    .period-form button {
-        margin-top: 26px;
-    }
-
-    .buffer-row {
+    .setting-row {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
         gap: 8px;
     }
 
-    .period-form select {
-        padding: 6px 8px;
-        font: inherit;
-        border: 2px solid var(--gray-light);
-        border-radius: 4px;
-        background-color: var(--white);
+    .setting-row .errorlist {
+        flex-basis: 100%;
+        margin: 0;
+    }
+
+    .setting-label {
+        width: 72px;
+        font-weight: var(--weight-bold);
+    }
+
+    .slot-count {
+        margin-left: 16px;
+        color: var(--gray-dark);
+    }
+
+    .buffer-detail {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-left: 16px;
+    }
+
+    /* バッファを設けないときは、後ろの文を薄くして選べないようにする */
+    .buffer-detail.is-disabled {
+        color: var(--gray-medium);
+    }
+
+    /* 自動保存の結果（右下に少しだけ出す） */
+    .save-status {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 10;
+        padding: 10px 16px;
+        border-radius: var(--border-radius-base);
+        background-color: var(--text);
+        color: var(--white);
+        font-size: var(--font-medium-small);
+        box-shadow: var(--shadow-large);
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity 0.2s, transform 0.2s;
+        pointer-events: none;
+    }
+
+    .save-status.is-shown {
+        opacity: 1;
+        transform: none;
+    }
+
+    .save-status.is-error {
+        background-color: var(--alert);
     }
 
     .grid a.mark--paid {
@@ -176,24 +214,6 @@
         -webkit-appearance: auto;
     }
 
-    .save-bar {
-        position: sticky;
-        bottom: 0;
-        display: flex;
-        justify-content: flex-end;
-        gap: 16px;
-        margin: 32px -40px -40px;
-        padding: 16px 40px;
-        background-color: var(--white);
-        box-shadow: var(--shadow-large-bottom);
-    }
-
-    @media (max-width: 768px) {
-        .save-bar {
-            margin: 32px -16px -24px;
-            padding: 12px 16px;
-        }
-    }
 {% endblock %}
 
 {% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ {{ project.name }}{% endblock %}
@@ -214,69 +234,58 @@
 
     <!-- ===== 募集期間と予約状況カレンダー ===== -->
     <div class="section">
-        <h3>募集期間</h3>
-        <form method="post" class="period-form" novalidate>
+        <h3>募集予約カレンダー</h3>
+        <form method="post" class="calendar-settings autosave" id="period-form" novalidate>
             {% csrf_token %}
             <input type="hidden" name="action" value="period">
-            <div class="form-group">
-                <label for="id_period_start">開始日</label>
-                <input type="date" name="period_start" id="id_period_start" value="{{ period_form.period_start.value|date:'Y-m-d'|default:period_form.period_start.value|default:'' }}" required>
-                {{ period_form.period_start.errors }}
-            </div>
-            <div class="form-group">
-                <label for="id_period_end">終了日</label>
-                <input type="date" name="period_end" id="id_period_end" value="{{ period_form.period_end.value|date:'Y-m-d'|default:period_form.period_end.value|default:'' }}" required>
-                {{ period_form.period_end.errors }}
-            </div>
-            <div class="form-group">
-                <label for="id_time_start">一番早い時刻</label>
-                <select name="time_start" id="id_time_start">
+            <div class="setting-row">
+                <span class="setting-label">募集期間</span>
+                <input type="date" name="period_start" aria-label="開始日" value="{{ period_form.period_start.value|date:'Y-m-d'|default:period_form.period_start.value|default:'' }}" required>
+                〜
+                <input type="date" name="period_end" aria-label="終了日" value="{{ period_form.period_end.value|date:'Y-m-d'|default:period_form.period_end.value|default:'' }}" required>
+                <select name="time_start" aria-label="開始時刻">
                     {% for value, label in time_choices|slice:":-1" %}<option value="{{ value }}" {% if value == period_form.time_start.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
-                {{ period_form.time_start.errors }}
-            </div>
-            <div class="form-group">
-                <label for="id_time_end">一番遅い時刻</label>
-                <select name="time_end" id="id_time_end">
+                〜
+                <select name="time_end" aria-label="終了時刻">
                     {% for value, label in time_choices|slice:"1:" %}<option value="{{ value }}" {% if value == period_form.time_end.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
-                {{ period_form.time_end.errors }}
+                {{ period_form.period_end.errors }}{{ period_form.time_end.errors }}
             </div>
-            <div class="form-group">
-                <label for="id_close">予約を自動で締め切る枠</label>
-                <select name="close" id="id_close">
+            <div class="setting-row">
+                <span class="setting-label">所要時間</span>
+                <select name="duration_hours" aria-label="時間">
+                    {% for value, label in period_form.fields.duration_hours.choices %}<option value="{{ value }}" {% if value|stringformat:"s" == period_form.duration_hours.value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                時間
+                <select name="duration_minutes" aria-label="分">
+                    {% for value, label in period_form.fields.duration_minutes.choices %}<option value="{{ value }}" {% if value|stringformat:"s" == period_form.duration_minutes.value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                分
+                <span class="slot-count">使用する時間枠：<b id="slot-count">{{ project.slot_count }}</b>つ</span>
+                {{ period_form.duration_minutes.errors }}
+            </div>
+            <div class="setting-row">
+                <select name="close" aria-label="自動で閉鎖する枠">
                     {% for value, label in close_choices %}<option value="{{ value }}" {% if value == period_form.close.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
-                {{ period_form.close.errors }}
+                の枠は自動で閉鎖する
             </div>
-            <div class="form-group">
-                <label for="id_duration">所要時間</label>
-                <select name="duration" id="id_duration">
-                    {% for value, label in period_form.fields.duration.choices %}<option value="{{ value }}" {% if value|stringformat:"s" == period_form.duration.value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                </select>
-                {{ period_form.duration.errors }}
-            </div>
-            <div class="form-group">
-                <span class="form-label">予約の前後を自動で閉じる</span>
-                <div class="buffer-row">
-                    予約された枠の
-                    <select name="buffer_side" aria-label="閉じる側">
-                        {% for value, label in period_form.fields.buffer_side.choices %}<option value="{{ value }}" {% if value == period_form.buffer_side.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            <div class="setting-row">
+                <label class="checkbox-label"><input type="checkbox" name="buffer_enabled" id="buffer-enabled" {% if period_form.buffer_enabled.value %}checked{% endif %}> バッファを設ける</label>
+                <span class="buffer-detail{% if not period_form.buffer_enabled.value %} is-disabled{% endif %}" id="buffer-detail">
+                    <select name="buffer_side" aria-label="閉鎖する側" {% if not period_form.buffer_enabled.value %}disabled{% endif %}>
+                        {% for value, label in period_form.fields.buffer_side.choices %}<option value="{{ value }}" {% if value == project.buffer_side %}selected{% endif %}>{{ label }}</option>{% endfor %}
                     </select>
-                    <select name="buffer_minutes" aria-label="閉じる時間">
-                        {% for value, label in period_form.fields.buffer_minutes.choices %}<option value="{{ value }}" {% if value|stringformat:"s" == period_form.buffer_minutes.value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    <select name="buffer_minutes" aria-label="閉鎖する時間" {% if not period_form.buffer_enabled.value %}disabled{% endif %}>
+                        {% for value, label in period_form.fields.buffer_minutes.choices %}<option value="{{ value }}" {% if value == project.buffer_minutes %}selected{% endif %}>{{ label }}</option>{% endfor %}
                     </select>
-                    を閉じる
-                </div>
-                {{ period_form.buffer_minutes.errors }}
+                    分の枠を自動で閉鎖する
+                </span>
             </div>
-            <button type="submit">期間を保存</button>
         </form>
-        <p class="note">参加者にはこの期間の日付と時間帯だけを見せます（一番遅い時刻は、最後の枠が終わる時刻です。例：18:00 なら最後の枠は 17:30〜18:00）。期間外の枠は下のカレンダーで「-」になります。</p>
-        <p class="note">所要時間：予約するとこの時間ぶんの枠がふさがります。参加者の画面では、後ろに所要時間ぶんの空きがある枠だけを選べます（変えても、すでに入っている予約の時間は変わりません）。予約の前後を閉じる設定にすると、予約の前後の枠も自動で「-」になり、その時間に重なる予約はできなくなります。</p>
-        <p class="note">「予約を自動で締め切る枠」の範囲に始まる枠は、時間がたつと自動で予約できなくなります（参加者の画面では「×」、下のカレンダーでは「-」）。例：「今から2時間以内」なら、始まる2時間前に締め切ります。「今日中」なら当日の枠は予約できず、明日以降の枠だけ予約できます。</p>
+        <p class="note">参加者には募集期間の日付と時間帯だけを見せます（終了時刻は最後の枠が終わる時刻です。例：18:00 なら最後の枠は 17:30〜18:00）。予約は所要時間に足りるだけの30分の枠をふさぎ、参加者の画面では後ろに十分な空きがある枠だけを選べます（所要時間を変えても、すでに入っている予約は変わりません）。自動で閉鎖する枠・募集期間外・バッファの枠は、下のカレンダーで「-」、参加者の画面で「×」になります。</p>
 
-        <h3>予約状況カレンダー</h3>
         <p class="note">マスを押すと、受付（◯）と受付停止（×）が切り替わり、すぐに保存されます。日付や時刻の見出しを押すと、その列・行をまとめて切り替えます。「予」「済」を押すとその日の予約一覧を開きます。</p>
         <div class="legend">
             <span><span class="mark mark--open">◯</span>受付中</span>
@@ -293,8 +302,9 @@
         </div>
     </div>
 
-    <form method="post" enctype="multipart/form-data" novalidate>
+    <form method="post" enctype="multipart/form-data" class="autosave" id="settings-form" novalidate>
         {% csrf_token %}
+        <input type="hidden" name="action" value="settings">
 
         <!-- ===== 最初の画面 ===== -->
         <div class="section">
@@ -408,12 +418,9 @@
             </div>
         </div>
 
-        <div class="save-bar">
-            <a class="button button--sub" href="{% url 'setting_home' %}">一覧に戻る</a>
-            <button type="submit">設定を保存</button>
-        </div>
     </form>
 </div>
+<div class="save-status" id="save-status" role="status" aria-live="polite"></div>
 {% endblock %}
 
 {% block script %}
@@ -455,6 +462,95 @@
             cells.forEach((cell) => { cell.disabled = false; });
         }
     }
+
+    // ---- 自動保存：入力したらその場で保存する ----
+    const saveStatus = document.getElementById('save-status');
+    let saveStatusTimer;
+
+    function showSaveStatus(text, isError) {
+        saveStatus.textContent = text;
+        saveStatus.classList.toggle('is-error', !!isError);
+        saveStatus.classList.add('is-shown');
+        clearTimeout(saveStatusTimer);
+        saveStatusTimer = setTimeout(() => saveStatus.classList.remove('is-shown'), isError ? 5000 : 1500);
+    }
+
+    function showErrors(form, errors) {
+        form.querySelectorAll('.errorlist').forEach((el) => el.remove());
+        Object.entries(errors || {}).forEach(([name, messages]) => {
+            const input = form.querySelector(`[name="${name}"]`);
+            const box = (input && input.closest('.setting-row, .form-group, td')) || form;
+            const list = document.createElement('ul');
+            list.className = 'errorlist';
+            messages.forEach((message) => {
+                const item = document.createElement('li');
+                item.textContent = message;
+                list.appendChild(item);
+            });
+            box.appendChild(list);
+        });
+    }
+
+    async function save(form, withFile) {
+        const data = new FormData(form);
+        if (!withFile) data.delete('manual');
+        form.saveCount = (form.saveCount || 0) + 1;
+        const count = form.saveCount;
+        try {
+            const response = await fetch(location.pathname, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'fetch' },
+                body: data,
+                keepalive: !withFile,  // 入力の途中でページを移っても保存を終わらせる
+            });
+            const result = await response.json();
+            if (count !== form.saveCount) return;  // あとから送った保存の結果を優先する
+            showErrors(form, result.errors);
+            if (!result.ok) {
+                showSaveStatus(result.error || '保存できませんでした。赤字の部分を確認してください。', true);
+                return;
+            }
+            showSaveStatus('保存しました');
+            if (result.reload) location.reload();
+            if (result.starts) {
+                // 募集期間などを変えたら、カレンダーを新しい設定で読みなおす
+                weekStarts.splice(0, weekStarts.length, ...result.starts);
+                await refreshWeeks();
+                showWeek(Math.min(current, weekStarts.length - 1));
+            }
+        } catch (error) {
+            showSaveStatus('保存できませんでした。通信状態を確かめて、もう一度入力してください。', true);
+        }
+    }
+
+    document.querySelectorAll('form.autosave').forEach((form) => {
+        let typingTimer;
+        form.addEventListener('submit', (event) => event.preventDefault());
+        form.addEventListener('input', (event) => {
+            if (!event.target.matches('input[type="text"], input[type="email"], input[type="url"], textarea')) return;
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => save(form, false), 800);
+        });
+        form.addEventListener('change', (event) => {
+            clearTimeout(typingTimer);
+            save(form, event.target.type === 'file');
+        });
+    });
+
+    // 所要時間から、使用する時間枠の数（30分ごとに切り上げ）を出す
+    function updateSlotCount() {
+        const form = document.getElementById('period-form');
+        const minutes = Number(form.duration_hours.value) * 60 + Number(form.duration_minutes.value);
+        document.getElementById('slot-count').textContent = Math.max(1, Math.ceil(minutes / 30));
+    }
+    document.querySelectorAll('[name="duration_hours"], [name="duration_minutes"]').forEach((el) => el.addEventListener('change', updateSlotCount));
+
+    // バッファを設けないときは、後ろの文を薄くして選べないようにする
+    document.getElementById('buffer-enabled').addEventListener('change', (event) => {
+        const detail = document.getElementById('buffer-detail');
+        detail.classList.toggle('is-disabled', !event.target.checked);
+        detail.querySelectorAll('select').forEach((select) => { select.disabled = !event.target.checked; });
+    }, true);
 
     // あとから読み込んだ週のマスでも押せるように、表全体で受け取る
     weekArea.addEventListener('click', (event) => {
