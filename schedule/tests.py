@@ -21,6 +21,41 @@ def tomorrow_slot(project, hour=10):
     return Slot.objects.get(project=project, start=datetime.datetime.combine(day, datetime.time(hour)))
 
 
+class CloseCutoffTests(TestCase):
+    def test_cutoff_modes(self):
+        p = Project(name='c')
+        now = datetime.datetime(2026, 11, 6, 10, 15)
+        midnight = datetime.datetime(2026, 11, 7)
+        cases = [
+            (('hours', 2), datetime.datetime(2026, 11, 6, 12, 15)),
+            (('hours', 24), datetime.datetime(2026, 11, 7, 10, 15)),
+            (('today', 0), midnight),
+            (('tomorrow', 0), midnight + datetime.timedelta(days=1)),
+            (('days', 1), midnight + datetime.timedelta(days=1)),
+            (('days', 7), midnight + datetime.timedelta(days=7)),
+        ]
+        for (mode, value), expected in cases:
+            p.close_mode, p.close_value = mode, value
+            self.assertEqual(p.close_cutoff(now), expected, (mode, value))
+
+    def test_same_day_booking(self):
+        project = Project.objects.create(name='same')
+        project.ensure_slots()
+        # 明日の10:00を「今」として、当日の枠が締め切りに合わせて予約できるかを確かめる
+        day = datetime.date.today() + datetime.timedelta(days=1)
+        now = datetime.datetime.combine(day, datetime.time(10))
+        soon = tomorrow_slot(project, 11)    # 1時間後
+        later = tomorrow_slot(project, 14)   # 4時間後
+        self.assertFalse(soon.bookable(now))
+        self.assertEqual(soon.admin_state(now), 'none')
+        self.assertTrue(later.bookable(now))  # 当日でも締め切り（2時間前）より後なら予約できる
+        self.assertEqual(later.admin_state(now), 'open')
+        for mode, value, expected in [('hours', 5, False), ('today', 0, False), ('hours', 1, True)]:
+            project.close_mode, project.close_value = mode, value
+            later.project = project
+            self.assertEqual(later.bookable(now), expected, (mode, value))
+
+
 class SlotTests(TestCase):
     def test_slots_cover_today_to_90_days(self):
         project = Project.objects.create(name='exp1')
@@ -103,7 +138,7 @@ class ParticipantFlowTests(TestCase):
         from .calendar import user_week_starts
         starts = user_week_starts(Project.objects.get(pk=self.project.pk))
         self.assertEqual(starts[0], datetime.date.today())  # 今日が一番左
-        self.assertEqual(len(starts), 3)  # 初期値の募集期間（明日から2週間）
+        self.assertEqual(len(starts), 2)  # 初期値の募集期間（今日から13日後まで＝2週間）
         page = self.client.get(reverse('timeframe', args=['exp-1']))
         self.assertEqual(page.content.decode().count('class="grid-wrap week"'), 1)  # 最初は1週間分だけ
         response = self.client.get(reverse('week', args=['exp-1']) + f'?start={starts[1]}')
@@ -184,8 +219,10 @@ class SettingTests(TestCase):
         project = Project.objects.get(name='exp2')
         self.assertTrue(project.slots.exists())
         today = datetime.date.today()
-        self.assertEqual(project.period_start, today + datetime.timedelta(days=1))
-        self.assertEqual(project.period_end, today + datetime.timedelta(days=14))
+        self.assertEqual(project.period_start, today)
+        self.assertEqual(project.period_end, today + datetime.timedelta(days=13))
+        self.assertEqual((project.time_start, project.time_end), (datetime.time(9), datetime.time(21)))
+        self.assertEqual((project.close_mode, project.close_value), ('hours', 2))
 
         bad = self.client.post(reverse('setting_home'), {'action': 'create', 'name': '日本語'})
         self.assertContains(bad, 'アルファベット')
@@ -227,7 +264,8 @@ class SettingTests(TestCase):
         url = reverse('setting_project', args=['p1'])
         later = datetime.date.today() + datetime.timedelta(days=200)
         response = self.client.post(url, {'action': 'period', 'period_start': str(datetime.date.today()),
-                                          'period_end': str(later), 'time_start': '09:00', 'time_end': '18:00'})
+                                          'period_end': str(later), 'time_start': '09:00', 'time_end': '18:00',
+                                          'close': 'hours:2'})
         self.assertRedirects(response, url)
         project.refresh_from_db()
         self.assertEqual((project.period_end, project.time_start, project.time_end),
@@ -235,9 +273,28 @@ class SettingTests(TestCase):
         self.assertTrue(project.slots.filter(start__date=later).exists())  # 90日より先の終了日でも枠を作る
 
         bad = self.client.post(url, {'action': 'period', 'period_start': str(later), 'period_end': str(datetime.date.today()),
-                                     'time_start': '18:00', 'time_end': '09:00'})
+                                     'time_start': '18:00', 'time_end': '09:00', 'close': 'hours:2'})
         self.assertContains(bad, '終了日は開始日より後にしてください')
         self.assertContains(bad, '一番遅い時刻は')
+
+    def test_close_setting_form(self):
+        login(self.client)
+        project = Project.objects.create(name='p3')
+        url = reverse('setting_project', args=['p3'])
+        base = {'action': 'period', 'period_start': str(project.period_start), 'period_end': str(project.period_end),
+                'time_start': '09:00', 'time_end': '21:00'}
+        page = self.client.get(url)
+        self.assertContains(page, '<option value="hours:2" selected>今から2時間以内</option>', html=False)
+        for value, expected in [('hours:24', ('hours', 24)), ('today:0', ('today', 0)),
+                                ('tomorrow:0', ('tomorrow', 0)), ('days:7', ('days', 7))]:
+            self.client.post(url, {**base, 'close': value})
+            project.refresh_from_db()
+            self.assertEqual((project.close_mode, project.close_value), expected)
+        self.assertContains(self.client.get(url), '<option value="days:7" selected>')
+        bad = self.client.post(url, {**base, 'close': 'hours:25'})
+        self.assertEqual(bad.status_code, 200)
+        project.refresh_from_db()
+        self.assertEqual(project.close_mode, 'days')
 
     def test_admin_states(self):
         project = Project.objects.create(name='p2', period_start=datetime.date.today(),

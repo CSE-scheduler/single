@@ -234,9 +234,17 @@
                 </select>
                 {{ period_form.time_end.errors }}
             </div>
+            <div class="form-group">
+                <label for="id_close">予約を自動で締め切る枠</label>
+                <select name="close" id="id_close">
+                    {% for value, label in close_choices %}<option value="{{ value }}" {% if value == period_form.close.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                {{ period_form.close.errors }}
+            </div>
             <button type="submit">期間を保存</button>
         </form>
         <p class="note">参加者にはこの期間の日付と時間帯だけを見せます（一番遅い時刻は、最後の枠が終わる時刻です。例：18:00 なら最後の枠は 17:30〜18:00）。期間外の枠は下のカレンダーで「-」になります。</p>
+        <p class="note">「予約を自動で締め切る枠」の範囲に始まる枠は、時間がたつと自動で予約できなくなります（参加者の画面では「×」、下のカレンダーでは「-」）。例：「今から2時間以内」なら、始まる2時間前に締め切ります。「今日中」なら当日の枠は予約できず、明日以降の枠だけ予約できます。</p>
 
         <h3>予約状況カレンダー</h3>
         <p class="note">マスを押すと、受付（◯）と受付停止（×）が切り替わり、すぐに保存されます。日付や時刻の見出しを押すと、その列・行をまとめて切り替えます。「予」「済」を押すとその日の予約一覧を開きます。</p>
@@ -245,7 +253,7 @@
             <span><span class="mark mark--closed">×</span>受付停止（こちらで止めた枠）</span>
             <span><span class="mark mark--reserved">予</span>予約あり</span>
             <span><span class="mark mark--paid">済</span>謝金支払い済み</span>
-            <span><span class="mark mark--none">-</span>募集期間外・過ぎた枠（切り替えできません）</span>
+            <span><span class="mark mark--none">-</span>募集期間外・締め切った枠（切り替えできません）</span>
         </div>
         <p class="note">参加者の画面では、◯以外はすべて「×」と表示されます。</p>
         {% include 'schedule/_week_nav.html' %}

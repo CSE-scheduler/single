@@ -15,7 +15,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .calendar import admin_week, admin_week_starts
-from .forms import TIME_CHOICES, TITLE_FIELDS, NewProjectForm, PeriodForm, ProjectForm
+from .forms import CLOSE_CHOICES, TIME_CHOICES, TITLE_FIELDS, NewProjectForm, PeriodForm, ProjectForm
 from .models import PROJECT_NAME_SYMBOLS, Project, Reservation, Slot
 
 SESSION_KEY = 'schedule_admin'
@@ -128,6 +128,7 @@ def project_edit(request, project):
         'form': form,
         'period_form': period_form,
         'time_choices': TIME_CHOICES,
+        'close_choices': CLOSE_CHOICES,
         'fields': fields,
         'starts': [d.isoformat() for d in starts],
         'index': index,
@@ -155,12 +156,12 @@ def week(request, project):
 @require_POST
 def toggle_slots(request, project):
     """カレンダーのマス（または1日分・1時刻分）の受付を切り替える。
-    予約が入っている枠・今より前の枠・募集期間外の枠（「-」）は変えない"""
+    予約が入っている枠・締め切った枠・募集期間外の枠（「-」）は変えない"""
     project = get_object_or_404(Project, name=project)
     ids = [int(i) for i in request.POST.getlist('ids') if i.isdigit()]
-    now = datetime.datetime.now()
+    cutoff = project.close_cutoff(datetime.datetime.now())
     slots = [
-        s for s in Slot.objects.filter(project=project, pk__in=ids, reservation__isnull=True, start__gte=now)
+        s for s in Slot.objects.filter(project=project, pk__in=ids, reservation__isnull=True, start__gte=cutoff)
         if project.in_period(s.start)
     ]
     # 1つでも受付中の枠があれば全部止める。全部止まっていれば全部再開する

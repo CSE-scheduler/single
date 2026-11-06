@@ -3,7 +3,9 @@ import os
 
 from django import forms
 
-from .models import FIELDS, SEX_CHOICES, TIME_OPTIONS, Project, validate_project_name
+from .models import (
+    CLOSE_DAYS_MAX, CLOSE_HOURS_MAX, FIELDS, SEX_CHOICES, TIME_OPTIONS, Project, validate_project_name,
+)
 
 # 説明書としてアップロードできるファイル（拡張子 → 配信するときの種類）
 MANUAL_TYPES = {
@@ -33,9 +35,18 @@ TIME_CHOICES = [(f'{t:%H:%M}', f'{t:%-H:%M}') for t in TIME_OPTIONS]
 MAX_PERIOD_DAYS = 365
 
 
+# 予約を自動で締め切る範囲の選択肢（値は「種類:数」）
+CLOSE_CHOICES = (
+    [(f'hours:{n}', f'今から{n}時間以内') for n in range(1, CLOSE_HOURS_MAX + 1)]
+    + [('today:0', '今日中'), ('tomorrow:0', '次の日まで')]
+    + [(f'days:{n}', f'今日から{n}日後まで') for n in range(1, CLOSE_DAYS_MAX + 1)]
+)
+
+
 class PeriodForm(forms.ModelForm):
     time_start = forms.TypedChoiceField(choices=TIME_CHOICES[:-1], coerce=lambda v: datetime.time.fromisoformat(v))
     time_end = forms.TypedChoiceField(choices=TIME_CHOICES[1:], coerce=lambda v: datetime.time.fromisoformat(v))
+    close = forms.ChoiceField(choices=CLOSE_CHOICES)
 
     class Meta:
         model = Project
@@ -46,6 +57,8 @@ class PeriodForm(forms.ModelForm):
         if not self.is_bound:
             self.initial['time_start'] = f'{self.instance.time_start:%H:%M}'
             self.initial['time_end'] = f'{self.instance.time_end:%H:%M}'
+            value = self.instance.close_value if self.instance.close_mode in ('hours', 'days') else 0
+            self.initial['close'] = f'{self.instance.close_mode}:{value}'
 
     def clean(self):
         cleaned = super().clean()
@@ -58,6 +71,10 @@ class PeriodForm(forms.ModelForm):
         t_start, t_end = cleaned.get('time_start'), cleaned.get('time_end')
         if t_start and t_end and t_start >= t_end:
             self.add_error('time_end', '一番遅い時刻は、一番早い時刻より後にしてください。')
+        if cleaned.get('close'):
+            mode, value = cleaned['close'].split(':')
+            self.instance.close_mode = mode
+            self.instance.close_value = int(value)
         return cleaned
 
 

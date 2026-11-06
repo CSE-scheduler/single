@@ -112,7 +112,7 @@ def confirm(request, project):
             # 申し込みボタンの二度押しや再読み込みは、同じ人の予約としてそのまま完了画面を出す
             if existing and existing.pk == request.session.get(key):
                 return redirect('complete', project.name)
-            if existing or not slot.bookable(datetime.date.today()):
+            if existing or not slot.bookable(datetime.datetime.now()):
                 return _message(request, project, '申し訳ございません',
                                 'この日時は予約できなくなりました。お手数ですが、日時を選択しなおしてください。')
             reservation = Reservation.objects.create(slot=slot, **reservation_values(form))

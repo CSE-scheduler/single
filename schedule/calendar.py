@@ -70,12 +70,12 @@ def user_week_starts(project, today=None):
     return starts
 
 
-def user_week(project, first, selected='', today=None):
-    today = today or datetime.date.today()
+def user_week(project, first, selected='', now=None):
+    now = now or datetime.datetime.now()
     times = [t for t in ALL_TIMES if project.time_start <= t < project.time_end]
 
     def cell(slot):
-        if slot is None or not slot.bookable(today):
+        if slot is None or not slot.bookable(now):
             return None  # 予約できない枠は、理由にかかわらず「×」
         return {'slot': slot, 'label': slot.label(), 'checked': str(slot.pk) == selected}
 

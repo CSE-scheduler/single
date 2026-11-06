@@ -25,12 +25,18 @@ TIME_OPTIONS = [
 
 
 def default_period_start():
-    # 募集期間の初期値：プロジェクトを作った次の日から2週間
-    return datetime.date.today() + datetime.timedelta(days=1)
+    # 募集期間の初期値：プロジェクトを作った日から2週間（13日後まで）。作ったあとは自動では動かさない
+    return datetime.date.today()
 
 
 def default_period_end():
-    return datetime.date.today() + datetime.timedelta(days=14)
+    return datetime.date.today() + datetime.timedelta(days=13)
+
+
+# 予約を自動で締め切る枠の範囲。hours：今からn時間以内、today：今日中、tomorrow：次の日まで、days：今日からn日後まで
+CLOSE_MODES = [('hours', '今からn時間以内'), ('today', '今日中'), ('tomorrow', '次の日まで'), ('days', '今日からn日後まで')]
+CLOSE_HOURS_MAX = 24
+CLOSE_DAYS_MAX = 7
 
 
 # ---- プロジェクト名 ----
@@ -109,8 +115,11 @@ class Project(models.Model):
     # 募集期間（参加者に見せる日付と時間帯）。期間外の枠は予約できない
     period_start = models.DateField('募集開始日', default=default_period_start)
     period_end = models.DateField('募集終了日', default=default_period_end)
-    time_start = models.TimeField('一番早い時刻', default=datetime.time(START_HOUR))
-    time_end = models.TimeField('一番遅い時刻', default=datetime.time(23))
+    time_start = models.TimeField('一番早い時刻', default=datetime.time(9))
+    time_end = models.TimeField('一番遅い時刻', default=datetime.time(21))
+    # この範囲に始まる枠は、予約を自動で締め切る（例：close_mode='hours', close_value=2 → 今から2時間以内に始まる枠）
+    close_mode = models.CharField(max_length=10, choices=CLOSE_MODES, default='hours')
+    close_value = models.PositiveSmallIntegerField(default=2)
 
     # 最初の画面（同意画面）
     consent_text = models.TextField('最初の画面の文言', blank=True, default=DEFAULT_CONSENT_TEXT)
@@ -184,6 +193,24 @@ class Project(models.Model):
         return (self.period_start <= start.date() <= self.period_end
                 and self.time_start <= start.time() < self.time_end)
 
+    def close_cutoff(self, now):
+        """これより前に始まる枠は予約を締め切る（参加者には×、設定画面では-）"""
+        midnight = datetime.datetime.combine(now.date(), datetime.time())
+        if self.close_mode == 'today':
+            return midnight + datetime.timedelta(days=1)
+        if self.close_mode == 'tomorrow':
+            return midnight + datetime.timedelta(days=2)
+        if self.close_mode == 'days':
+            return midnight + datetime.timedelta(days=self.close_value + 1)
+        return now + datetime.timedelta(hours=self.close_value)
+
+    def close_label(self):
+        if self.close_mode == 'hours':
+            return f'今から{self.close_value}時間以内'
+        if self.close_mode == 'days':
+            return f'今日から{self.close_value}日後まで'
+        return dict(CLOSE_MODES)[self.close_mode]
+
     def ensure_slots(self, today=None):
         """今日から DAYS_AHEAD 日後（募集終了日がもっと先ならその日）までの枠をそろえる。
         すでにある枠（受付停止・予約）はそのまま"""
@@ -240,16 +267,16 @@ class Slot(models.Model):
 
     def admin_state(self, now):
         """設定画面での表示。open：◯（受付中）、closed：×（受付停止）、reserved：予（予約あり）、
-        paid：済（謝金支払い済み）、none：-（今より前、または募集期間外。切り替えられない）"""
+        paid：済（謝金支払い済み）、none：-（締め切った枠・過ぎた枠・募集期間外。切り替えられない）"""
         if self.reserved:
             return 'paid' if self.reservation.paid else 'reserved'
-        if self.start < now or not self.project.in_period(self.start):
+        if self.start < self.project.close_cutoff(now) or not self.project.in_period(self.start):
             return 'none'
         return 'closed' if self.closed else 'open'
 
-    def bookable(self, today):
-        """参加者が予約できるか（明日以降・募集期間内・受付中・予約なし）"""
-        return (not self.reserved and not self.closed and self.start.date() > today
+    def bookable(self, now):
+        """参加者が予約できるか（締め切り前・募集期間内・受付中・予約なし）"""
+        return (not self.reserved and not self.closed and self.start >= self.project.close_cutoff(now)
                 and self.project.in_period(self.start))
 
 
