@@ -491,7 +491,7 @@
     </div>
     <form id="mail-modal-form" novalidate>
         <div class="form-group">
-            <label for="mail-modal-reply-to">返信用メールアドレス（必須）</label>
+            <label for="mail-modal-reply-to">返信用メールアドレス</label>
             <input type="email" id="mail-modal-reply-to" maxlength="254" placeholder="例：yourname@example.com" required>
             <p class="note">参加者がメールの「返信」を押すと、このアドレス宛てになります。</p>
             <ul class="errorlist" id="mail-modal-error" hidden><li>返信用メールアドレスを正しく入力してください。</li></ul>
@@ -531,7 +531,7 @@
     </div>
     <form id="extra-form" novalidate>
         <div class="form-group">
-            <label for="extra-modal-title-input">入力画面に出す項目名（必須）</label>
+            <label for="extra-modal-title-input">入力画面に出す項目名</label>
             <input type="text" id="extra-modal-title-input" maxlength="500">
             <p class="note" id="extra-modal-kind"></p>
             <ul class="errorlist" id="extra-modal-error" hidden><li>項目名を入力してください。</li></ul>
@@ -552,7 +552,7 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="manual">
         <div class="form-group">
-            <label for="id_manual">説明書のファイル（必須）</label>
+            <label for="id_manual">説明書のファイル</label>
             <input type="file" name="manual" id="id_manual" accept=".pdf,.png,.jpg,.jpeg">
             <p class="note">PDF・PNG・JPEG（10MBまで）</p>
         </div>
