@@ -57,9 +57,10 @@
     }
 {% endblock %}
 
+{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ <a href="{% url 'setting_project' project.name %}">{{ project.name }}</a> ＞ 予約一覧{% endblock %}
+
 {% block admin_content %}
 <div class="main_text main_text--wide">
-    <div class="breadcrumb"><a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ <a href="{% url 'setting_project' project.name %}">{{ project.name }}</a> ＞ 予約一覧</div>
     <div class="page-head">
         <h2>予約一覧</h2>
         <a class="button button--sub" href="{% url 'setting_project' project.name %}">プロジェクトの編集に戻る</a>

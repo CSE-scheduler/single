@@ -3,35 +3,64 @@
 {% block page_title %}プロジェクト一覧{% endblock %}
 
 {% block admin_style %}
-    .new-project {
-        display: flex;
-        align-items: flex-start;
-        flex-wrap: wrap;
-        gap: 12px;
-        padding: 16px 20px;
-        margin-bottom: 24px;
-        background-color: var(--primary-hover);
-        border-radius: var(--border-radius-base);
+    .page-head h2 {
+        margin-bottom: 0;
     }
 
-    .new-project .form-group {
-        margin: 0;
-        width: auto;
-        flex: 1 1 280px;
+    .button--icon {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
     }
 
-    .new-project input[type="text"] {
-        width: 100%;
+    .button--icon svg {
+        flex: 0 0 auto;
     }
 
-    .new-project button {
-        margin-top: 26px;
+    .projects {
+        table-layout: fixed;
+    }
+
+    .projects .col-name { width: 18%; }
+    .projects .col-count { width: 8%; }
+    .projects .col-paid { width: 11%; }
+    .projects .col-delete { width: 96px; }
+
+    .projects th, .projects td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .projects td:last-child {
+        overflow: visible;
     }
 
     .project-name {
         font-weight: var(--weight-bold);
         font-size: var(--font-medium);
         word-break: break-all;
+    }
+
+    /* 募集ページのURLとコピーボタン */
+    .recruit {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .recruit a {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .copy-button {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
     }
 
     /* 行のどこを押してもプロジェクトの編集画面を開く */
@@ -44,37 +73,78 @@
         outline-offset: -2px;
     }
 
-    .unpaid {
-        color: var(--secondary);
-        font-weight: var(--weight-bold);
+    /* 新規プロジェクト作成のモーダル */
+    .modal {
+        width: min(480px, calc(100% - 32px));
+        padding: 32px;
+        border: none;
+        border-radius: var(--border-radius-base);
+        box-shadow: var(--shadow-large);
+        color: var(--text);
+    }
+
+    .modal::backdrop {
+        background-color: rgba(51, 51, 51, 0.4);
+    }
+
+    .modal__head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+    .modal__close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 4px;
+        color: var(--gray-dark);
+        background-color: transparent;
+    }
+
+    .modal__close:hover {
+        background-color: var(--primary-hover);
+    }
+
+    .modal input[type="text"] {
+        width: 100%;
+    }
+
+    .modal .button-group {
+        justify-content: flex-end;
     }
 {% endblock %}
 
+{% block breadcrumb %}プロジェクト一覧{% endblock %}
+
 {% block admin_content %}
 <div class="main_text main_text--wide">
-    <h2>プロジェクト一覧</h2>
-
-    <form method="post" class="new-project">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="create">
-        <div class="form-group">
-            <label for="id_name">新しいプロジェクトを作る</label>
-            <input type="text" name="name" id="id_name" maxlength="100" value="{{ form.name.value|default:'' }}" placeholder="例：exp2026-A" required>
-            <p class="note">プロジェクト名はURLになります（例：https://csescheduler.pythonanywhere.com/<b>exp2026-A</b>/）。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
-            {{ form.name.errors }}
-        </div>
-        <button type="submit">作成</button>
-    </form>
+    <div class="page-head">
+        <h2>プロジェクト一覧</h2>
+        <button type="button" class="button--icon" onclick="openNewProject()">{% include 'schedule/icons/add.html' %}新規プロジェクト作成</button>
+    </div>
 
     <div class="table-wrap">
-        <table class="table">
+        <table class="table projects">
+            <colgroup>
+                <col class="col-name">
+                <col class="col-count">
+                <col class="col-count">
+                <col class="col-paid">
+                <col>
+                <col class="col-delete">
+            </colgroup>
             <thead>
                 <tr>
                     <th>プロジェクト名</th>
                     <th class="right">予約数</th>
-                    <th class="right">今日以降の予約</th>
-                    <th class="right">謝金未払い</th>
-                    <th>参加者用ページ</th>
+                    <th class="right">今日以降</th>
+                    <th class="right">謝金支払い済み</th>
+                    <th>募集ページ</th>
                     <th class="right"></th>
                 </tr>
             </thead>
@@ -84,8 +154,13 @@
                     <td><span class="project-name">{{ project.name }}</span></td>
                     <td class="right">{{ project.n_reservations }}</td>
                     <td class="right">{{ project.n_upcoming }}</td>
-                    <td class="right">{% if project.n_unpaid %}<span class="unpaid">{{ project.n_unpaid }}</span>{% else %}0{% endif %}</td>
-                    <td><a href="{% url 'consent' project.name %}" target="_blank" rel="noopener">開く</a></td>
+                    <td class="right">{{ project.n_paid }}</td>
+                    <td>
+                        <div class="recruit">
+                            <a href="{{ project.recruit_url }}" target="_blank" rel="noopener">{{ project.recruit_url }}</a>
+                            <button type="button" class="button--sub button--small copy-button" data-url="{{ project.recruit_url }}">{% include 'schedule/icons/copy.html' %}<span>コピー</span></button>
+                        </div>
+                    </td>
                     <td class="right">
                         <form class="inline-form" method="post" onsubmit="return confirm('プロジェクト「{{ project.name|escapejs }}」を削除します。予約（{{ project.n_reservations }}件）もすべて消え、元に戻せません。よろしいですか？')">
                             {% csrf_token %}
@@ -96,17 +171,63 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6">まだプロジェクトはありません。上の欄から作成してください。</td></tr>
+                <tr><td colspan="6">まだプロジェクトはありません。「新規プロジェクト作成」から作成してください。</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<dialog class="modal" id="new-project" aria-labelledby="new-project-title">
+    <div class="modal__head">
+        <h3 id="new-project-title">新規プロジェクト作成</h3>
+        <button type="button" class="modal__close" onclick="this.closest('dialog').close()" aria-label="閉じる">{% include 'schedule/icons/close.html' %}</button>
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <div class="form-group">
+            <label for="id_name">プロジェクト名</label>
+            <input type="text" name="name" id="id_name" maxlength="100" value="{{ form.name.value|default:'' }}" placeholder="例：exp2026-A" required>
+            <p class="note">募集ページのURLになり、あとから変えられません（例：https://csescheduler.pythonanywhere.com/<b>exp2026-A</b>/）。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
+            {{ form.name.errors }}
+        </div>
+        <div class="button-group">
+            <button type="submit">作成する</button>
+        </div>
+    </form>
+</dialog>
 {% endblock %}
 
 {% block script %}
 <script>
-    // 行を押すと編集画面へ（「開く」のリンクと削除ボタンを押したときは除く）
+    const dialog = document.getElementById('new-project');
+
+    function openNewProject() {
+        dialog.showModal();
+        document.getElementById('id_name').focus();
+    }
+
+    // 入力に誤りがあったときは、モーダルを開いたまま誤りを見せる
+    {% if form.errors %}openNewProject();{% endif %}
+
+    // モーダルの外側（暗いところ）を押したら閉じる
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+
+    // 募集ページのURLをコピーする
+    document.querySelectorAll('.copy-button').forEach((button) => {
+        button.addEventListener('click', () => {
+            navigator.clipboard.writeText(button.dataset.url).then(() => {
+                const label = button.querySelector('span');
+                label.textContent = 'コピーしました';
+                setTimeout(() => { label.textContent = 'コピー'; }, 1500);
+            });
+        });
+    });
+
+    // 行を押すと編集画面へ（リンク・コピー・削除を押したときは除く）
     document.querySelectorAll('.row-link').forEach((row) => {
         const open = () => { window.location.href = row.dataset.href; };
         row.addEventListener('click', (event) => {

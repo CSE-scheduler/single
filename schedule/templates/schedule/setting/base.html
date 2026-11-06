@@ -9,23 +9,31 @@
         gap: 12px;
     }
 
+    /* 白い島の外の一番上の段：左にパンくずリスト、右にアイコン（高さ24px） */
     .admin-header {
         width: min(1200px, 100%);
+        height: 24px;
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
         gap: 8px;
     }
 
-    /* アイコンのボタン（Iconify の Material Symbols） */
+    .admin-header__icons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* アイコンのボタン（Iconify の Material Symbols、20px） */
     .icon-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 40px;
-        height: 40px;
+        width: 24px;
+        height: 24px;
         padding: 0;
-        border-radius: 50%;
+        border-radius: 4px;
         color: var(--primary);
         background-color: transparent;
     }
@@ -34,10 +42,22 @@
         background-color: var(--primary-selected);
     }
 
+    .icon-button svg {
+        width: 20px;
+        height: 20px;
+    }
+
     .breadcrumb {
         font-size: var(--font-medium-small);
         color: var(--gray-dark);
-        margin-bottom: 8px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .breadcrumb a {
+        color: var(--primary);
+        text-decoration: underline;
     }
 
     .page-head {
@@ -64,11 +84,14 @@
 {% block content %}
 {% if request.session.schedule_admin %}
 <header class="admin-header">
-    <a class="icon-button" href="{% url 'setting_home' %}" title="プロジェクト一覧" aria-label="プロジェクト一覧"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 19h3v-5q0-.425.288-.712T10 13h4q.425 0 .713.288T15 14v5h3v-9l-6-4.5L6 10zm-2 0v-9q0-.475.213-.9t.587-.7l6-4.5q.525-.4 1.2-.4t1.2.4l6 4.5q.375.275.588.7T20 10v9q0 .825-.588 1.413T18 21h-4q-.425 0-.712-.288T13 20v-5h-2v5q0 .425-.288.713T10 21H6q-.825 0-1.412-.587T4 19m8-6.75"/></svg></a>
-    <form class="inline-form" method="post" action="{% url 'setting_logout' %}">
-        {% csrf_token %}
-        <button type="submit" class="icon-button" title="ログアウト" aria-label="ログアウト"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h6q.425 0 .713.288T12 4t-.288.713T11 5H5v14h6q.425 0 .713.288T12 20t-.288.713T11 21zm12.175-8H10q-.425 0-.712-.288T9 12t.288-.712T10 11h7.175L15.3 9.125q-.275-.275-.275-.675t.275-.7t.7-.313t.725.288L20.3 11.3q.3.3.3.7t-.3.7l-3.575 3.575q-.3.3-.712.288t-.713-.313q-.275-.3-.262-.712t.287-.688z"/></svg></button>
-    </form>
+    <nav class="breadcrumb" aria-label="現在地">{% block breadcrumb %}{% endblock %}</nav>
+    <div class="admin-header__icons">
+        <a class="icon-button" href="{% url 'setting_home' %}" title="プロジェクト一覧" aria-label="プロジェクト一覧">{% include 'schedule/icons/home.html' %}</a>
+        <form class="inline-form" method="post" action="{% url 'setting_logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="icon-button" title="ログアウト" aria-label="ログアウト">{% include 'schedule/icons/logout.html' %}</button>
+        </form>
+    </div>
 </header>
 {% endif %}
 {% if messages %}

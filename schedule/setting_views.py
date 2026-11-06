@@ -79,8 +79,11 @@ def home(request):
     projects = Project.objects.annotate(
         n_reservations=Count('slots__reservation'),
         n_upcoming=Count('slots__reservation', filter=Q(slots__start__gte=today_start)),
-        n_unpaid=Count('slots__reservation', filter=Q(slots__reservation__paid=False)),
+        n_paid=Count('slots__reservation', filter=Q(slots__reservation__paid=True)),
     )
+    projects = list(projects)
+    for project in projects:
+        project.recruit_url = request.build_absolute_uri(reverse('consent', args=[project.name]))
     return render(request, 'schedule/setting/home.html', {
         'projects': projects, 'form': form, 'symbols': PROJECT_NAME_SYMBOLS,
     })

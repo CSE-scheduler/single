@@ -196,14 +196,15 @@
     }
 {% endblock %}
 
+{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ {{ project.name }}{% endblock %}
+
 {% block admin_content %}
 <div class="main_text main_text--wide">
-    <div class="breadcrumb"><a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ {{ project.name }}</div>
     <div class="page-head">
         <div>
             <h2>{{ project.name }}</h2>
             <div class="participant-url">
-                参加者用ページ：<code id="participant-url">{{ participant_url }}</code>
+                募集ページ：<code id="participant-url">{{ participant_url }}</code>
                 <button type="button" class="button--sub button--small" onclick="copyUrl(this)">コピー</button>
                 <a href="{% url 'consent' project.name %}" target="_blank" rel="noopener">開く</a>
             </div>

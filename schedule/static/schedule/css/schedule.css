@@ -154,7 +154,7 @@ button:disabled:hover {
 
 /* ---- 入力欄 ---- */
 ::placeholder {
-    color: var(--gray-light);
+    color: var(--gray-medium);
     opacity: 1;
 }
 
