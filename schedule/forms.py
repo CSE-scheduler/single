@@ -36,8 +36,7 @@ class ProjectForm(forms.ModelForm):
         fields = [
             'name', 'consent_text', 'complete_text', 'complete_button_text', 'complete_button_url',
             *USE_FIELDS, *TITLE_FIELDS,
-            'mail_enabled', 'mail_from', 'mail_on_booking', 'mail_2days', 'mail_1day', 'mail_1hour',
-            'mail_subject', 'mail_body',
+            'mail_enabled', 'mail_subject', 'mail_bcc', 'mail_body',
         ]
 
     def clean_complete_button_url(self):
@@ -69,10 +68,6 @@ class ProjectForm(forms.ModelForm):
         if cleaned.get('mail_enabled'):
             if not cleaned.get('use_mail'):
                 self.add_error('mail_enabled', '確認メールを送るときは、「メールアドレス」を「取得する」にしてください。')
-            if not cleaned.get('mail_from') and 'mail_from' not in self.errors:
-                self.add_error('mail_from', '送信元アドレスを入力してください。')
-            if not any(cleaned.get(f) for f in ('mail_on_booking', 'mail_2days', 'mail_1day', 'mail_1hour')):
-                self.add_error('mail_enabled', '送るタイミングを1つ以上選んでください。')
             if not cleaned.get('mail_subject', '').strip() or not cleaned.get('mail_body', '').strip():
                 self.add_error('mail_body', '件名と本文を入力してください。')
         return cleaned

@@ -10,7 +10,7 @@
 | --- | --- |
 | `/<プロジェクト名>/` | 参加者用。最初の画面（同意画面）→ 日時選択 → 入力 → 予約完了 |
 | `/setting/home` | 設定画面（パスワードが必要）。プロジェクトの作成・一覧・削除 |
-| `/setting/home/<プロジェクト名>` | プロジェクトの編集。予約状況カレンダー（マスを押して受付・受付停止を切り替え）、各画面の文言、説明書、取得する項目、確認メール |
+| `/setting/home/<プロジェクト名>` | プロジェクトの編集。予約状況カレンダー（マスを押して受付・受付停止を切り替え）、各画面の文言、説明書、取得する項目、予約確認メール |
 | `/setting/home/<プロジェクト名>/appointments` | 予約一覧。日時・氏名で並べ替え、期間で絞り込み、謝金支払い済みの切り替え、予約の削除 |
 
 - 枠は 8:00〜23:00 の30分ごと。今日から90日後までの枠が、画面を開いたときに自動で作られます（`schedule/models.py` の `DAYS_AHEAD` などで変えられます）。
@@ -85,13 +85,13 @@ https://csescheduler.pythonanywhere.com/setting/home を開き、設定画面の
 python manage.py shell -c "from django.contrib.auth.hashers import make_password; print(make_password('新しいパスワード'))"
 ```
 
-## 確認メール
+## 予約確認メール
 
-プロジェクトの編集画面の「確認メール」で、送るかどうか・送信元アドレス・送るタイミング（予約直後／2日前／前日／1時間前）・件名・本文を設定します。本文の `{日時}` `{氏名}` は予約ごとに置き換わります。
+プロジェクトの編集画面の「予約確認メール」で、送るかどうか・タイトル・BCC（自分の通知用）・本文を設定します。予約が完了したときに、予約した人のメールアドレスへ送ります。タイトルと本文の `{日時}` `{氏名}` は予約ごとに置き換わります。
 
 ### 送信用のGmailを設定する
 
-メールは Gmail のSMTPから送ります（PythonAnywhereの無料プランでも使えます）。
+メールは、`local_settings.py` に書いた Gmail アカウントから送ります（PythonAnywhereの無料プランでも使えます）。書いていないあいだはメールを送りません。
 
 1. 送信に使う Google アカウントで2段階認証をオンにし、「アプリパスワード」を作る
 2. `django_app/local_settings.py` に書いて、Reload する
@@ -100,29 +100,6 @@ python manage.py shell -c "from django.contrib.auth.hashers import make_password
    EMAIL_HOST_USER = "送信用のGmailアドレス"
    EMAIL_HOST_PASSWORD = "アプリパスワード（16文字）"
    ```
-
-プロジェクトで設定した送信元アドレスは返信先（Reply-To）になります。差出人の表示もそのアドレスにしたいときは、送信用Gmailの「設定 → アカウント → 他のアドレスからメールを送信」にそのアドレスを登録します。
-
-### 2日前・前日・1時間前のメールを定期的に送る
-
-予約直後のメールは予約したときに送りますが、2日前・前日・1時間前のメールは次のコマンドが動いたときに送ります（送る時刻を過ぎていて、まだ実験が始まっていないものを送ります）。
-
-```bash
-python manage.py send_reminders
-```
-
-PythonAnywhereの「Tasks」タブで、どちらかを設定します。
-
-- **Always-on task**（有料プラン）：5分ごとに確かめ続けます。おすすめ
-  `cd /home/csescheduler/single && /home/csescheduler/.virtualenvs/scheduler/bin/python manage.py send_reminders --loop 300`
-- **Scheduled task**：`Hourly`（有料プラン）にすると1時間ごとに送ります。1時間前のメールは実験の0〜60分前に届きます
-  `cd /home/csescheduler/single && /home/csescheduler/.virtualenvs/scheduler/bin/python manage.py send_reminders`
-
-無料プランでは1日1回の Scheduled task しか作れないので、1時間前のメールは送れません（2日前・前日も、届く時刻が最大1日ずれます）。
-
-### MySQL を使うとき（任意）
-
-標準では SQLite（`db.sqlite3`）に保存します。MySQL にするときは：「Databases」タブで MySQL のパスワードを決めてから、`requirements.txt` の `mysqlclient` の行の `#` を外して `pip install -r requirements.txt`、`local_settings.py` の `MYSQL = {...}` のコメントを外して値を書き、`python manage.py migrate` → Reload。
 
 ## 更新するとき
 
