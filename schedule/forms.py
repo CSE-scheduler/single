@@ -107,7 +107,7 @@ class ProjectForm(forms.ModelForm):
         fields = [
             'consent_text', 'complete_text', 'complete_button_text', 'complete_button_url',
             *USE_FIELDS, *TITLE_FIELDS,
-            'mail_enabled', 'mail_subject', 'mail_bcc', 'mail_body',
+            'mail_enabled', 'mail_subject', 'mail_reply_to', 'mail_body',
         ]
 
     def clean_complete_button_url(self):

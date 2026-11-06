@@ -180,15 +180,16 @@
         background-color: var(--alert);
     }
 
-    .grid a.mark--paid {
-        color: var(--secondary) !important;
+    /* 予約が入っている枠（ステータスごとの色は schedule.css） */
+    .grid a.mark {
         text-decoration: none !important;
     }
 
-    .grid a.mark--reserved {
-        color: var(--primary) !important;
-        text-decoration: none !important;
-    }
+    .grid a.mark--reserved { color: var(--primary) !important; }
+    .grid a.mark--paid { color: var(--secondary) !important; }
+    .grid a.mark--done { color: #8A6500 !important; }
+    .grid a.mark--no_show { color: var(--white) !important; }
+    .grid a.mark--test { color: var(--gray-dark) !important; }
 
     .manual-current {
         display: flex;
@@ -284,17 +285,17 @@
                 </span>
             </div>
         </form>
-        <p class="note">参加者には募集期間の日付と時間帯だけを見せます（終了時刻は最後の枠が終わる時刻です。例：18:00 なら最後の枠は 17:30〜18:00）。予約は所要時間に足りるだけの30分の枠をふさぎ、参加者の画面では後ろに十分な空きがある枠だけを選べます（所要時間を変えても、すでに入っている予約は変わりません）。自動で閉鎖する枠・募集期間外・バッファの枠は、下のカレンダーで「-」、参加者の画面で「×」になります。</p>
-
-        <p class="note">マスを押すと、受付（◯）と受付停止（×）が切り替わり、すぐに保存されます。日付や時刻の見出しを押すと、その列・行をまとめて切り替えます。「予」「済」を押すとその日の予約一覧を開きます。</p>
+        <p class="note">クリックで受付（◯）と受付停止（×）を切り替えられます。日付や時刻を押すと、その列・行をまとめて切り替えられます。</p>
         <div class="legend">
             <span><span class="mark mark--open">◯</span>受付中</span>
             <span><span class="mark mark--closed">×</span>受付停止（こちらで止めた枠）</span>
-            <span><span class="mark mark--reserved">予</span>予約あり</span>
+            <span><span class="mark mark--reserved">予</span>予約済み</span>
+            <span><span class="mark mark--done">未</span>実施済み（謝金未払い）</span>
             <span><span class="mark mark--paid">済</span>謝金支払い済み</span>
+            <span><span class="mark mark--no_show">N</span>No Show</span>
+            <span><span class="mark mark--test">テ</span>テスト用</span>
             <span><span class="mark mark--none">-</span>募集期間外・締め切った枠（切り替えできません）</span>
         </div>
-        <p class="note">参加者の画面では、◯以外はすべて「×」と表示されます。</p>
         {% include 'schedule/_week_nav.html' %}
         {{ starts|json_script:"week-starts" }}
         <div id="week-area" data-url="{% url 'setting_week' project.name %}" data-index="{{ index }}">
@@ -404,15 +405,15 @@
                 {{ form.mail_subject.errors }}
             </div>
             <div class="form-group">
-                <label for="id_mail_bcc">BCCに入れるアドレス（通知用）</label>
-                <input type="email" name="mail_bcc" id="id_mail_bcc" maxlength="254" value="{{ form.mail_bcc.value|default:'' }}" placeholder="例：yourname@example.com">
-                <p class="note">予約が入るたびに、参加者に送ったものと同じメールがこのアドレスにも届きます（参加者には見えません）。空にするとBCCは付けません。</p>
-                {{ form.mail_bcc.errors }}
+                <label for="id_mail_reply_to">返信用メールアドレス</label>
+                <input type="email" name="mail_reply_to" id="id_mail_reply_to" maxlength="254" value="{{ form.mail_reply_to.value|default:'' }}" placeholder="例：yourname@example.com">
+                <p class="note">参加者がメールに返信すると、このアドレスに届きます。本文の「{返信用メールアドレス}」にもこのアドレスが入ります。</p>
+                {{ form.mail_reply_to.errors }}
             </div>
             <div class="form-group">
                 <label for="id_mail_body">メール本文</label>
                 <textarea name="mail_body" id="id_mail_body" rows="12">{{ form.mail_body.value|default:'' }}</textarea>
-                <p class="note">「{日時}」は予約した日時、「{氏名}」は入力された氏名に置き換わります（タイトルでも使えます）。</p>
+                <p class="note">本文とタイトルでは、次の文字が置き換わります。「{日時}」→予約した日時、「{氏名}」→入力された氏名、「{返信用メールアドレス}」→上で入力したアドレス、「{キャンセル用URL}」→その予約の変更・キャンセルのページのURL（予約ごとに違います）。</p>
                 <p class="note">文字だけのメールとして送ります。https:// で始まるURLをそのまま書けば、ほとんどのメールアプリでリンクになります。URLの直後に文字が続くとリンクの範囲がずれることがあるので、URLは1行に単独で書いてください。</p>
                 {{ form.mail_body.errors }}
             </div>

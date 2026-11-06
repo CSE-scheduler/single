@@ -16,5 +16,5 @@ class SlotAdmin(admin.ModelAdmin):
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
-    list_display = ['slot', 'full_name', 'mail', 'paid']
-    list_filter = ['slot__project', 'paid']
+    list_display = ['slot', 'full_name', 'mail', 'status']
+    list_filter = ['slot__project', 'status']

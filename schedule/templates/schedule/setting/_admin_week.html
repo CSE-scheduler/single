@@ -16,8 +16,8 @@
                 <td>
                     {% if cell.state == 'open' or cell.state == 'closed' %}
                     <button type="button" class="cell mark mark--{{ cell.state }}" data-id="{{ cell.slot.pk }}" title="{{ cell.label }}">{% if cell.state == 'open' %}◯{% else %}×{% endif %}</button>
-                    {% elif cell.state == 'reserved' or cell.state == 'paid' %}
-                    <a class="mark mark--{{ cell.state }}" href="{% url 'setting_appointments' project.name %}?from={{ cell.reservation.start|date:'Y-m-d' }}&to={{ cell.reservation.start|date:'Y-m-d' }}" title="{{ cell.reservation.label }} {{ cell.reservation.full_name }}">{% if cell.state == 'paid' %}済{% else %}予{% endif %}</a>
+                    {% elif cell.mark %}
+                    <a class="mark mark--{{ cell.state }}" href="{% url 'setting_appointments' project.name %}?from={{ cell.reservation.start|date:'Y-m-d' }}&to={{ cell.reservation.start|date:'Y-m-d' }}" title="{{ cell.reservation.label }} {{ cell.reservation.full_name }}（{{ cell.reservation.get_status_display }}）">{{ cell.mark }}</a>
                     {% else %}
                     <span class="mark mark--none">-</span>
                     {% endif %}

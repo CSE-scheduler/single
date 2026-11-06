@@ -272,7 +272,7 @@ class ParticipantFlowTests(TestCase):
         response = self.client.post(reverse('confirm', args=['exp-1']), data)
         self.assertRedirects(response, reverse('complete', args=['exp-1']))
         r = Reservation.objects.get(slot=slot)
-        self.assertEqual((r.full_name, r.data_reuse, r.extra4, r.paid), ('山田太郎', True, False, False))
+        self.assertEqual((r.full_name, r.data_reuse, r.extra4, r.status), ('山田太郎', True, False, 'reserved'))
 
         complete = self.client.get(reverse('complete', args=['exp-1']))
         self.assertContains(complete, '予約：' + slot.label(with_year=True))
@@ -458,7 +458,7 @@ class SettingTests(TestCase):
         self.assertEqual(state(project, tomorrow_slot(project, 8)), 'none')  # 時間帯の外
         r = Reservation.objects.create(slot=slot)
         self.assertEqual(state(project, slot, slot.start + datetime.timedelta(hours=1)), 'reserved')  # 予約は過ぎても残す
-        r.paid = True
+        r.status = 'paid'
         r.save()
         self.assertEqual(state(project, slot), 'paid')
 
@@ -515,10 +515,11 @@ class SettingTests(TestCase):
         self.assertContains(filtered, 'Aさん')
         self.assertNotContains(filtered, 'Bさん')
 
-        response = self.client.post(url, {'action': 'paid', 'id': r1.pk, 'paid': '1'})
-        self.assertEqual(response.json(), {'paid': True})
+        response = self.client.post(url, {'action': 'status', 'id': r1.pk, 'status': 'no_show'})
+        self.assertEqual(response.json(), {'status': 'no_show'})
+        self.assertEqual(self.client.post(url, {'action': 'status', 'id': r1.pk, 'status': 'bad'}).status_code, 400)
         r1.refresh_from_db()
-        self.assertTrue(r1.paid)
+        self.assertEqual(r1.status, 'no_show')
 
         response = self.client.post(url, {'action': 'delete', 'id': r2.pk, 'query': 'sort=-date'})
         self.assertRedirects(response, url + '?sort=-date')
@@ -530,8 +531,9 @@ class MailTests(TestCase):
     def setUp(self):
         self.project = Project.objects.create(
             name='mailexp', use_full_name=True, use_mail=True,
-            mail_enabled=True, mail_bcc='me@example.com',
-            mail_subject='{日時}のご予約', mail_body='{氏名} 様\n日時：{日時}\nhttps://example.com/zoom\n',
+            mail_enabled=True, mail_reply_to='lab@example.com',
+            mail_subject='{日時}のご予約',
+            mail_body='{氏名} 様\n日時：{日時}\nhttps://example.com/zoom\n変更：{キャンセル用URL}\n問い合わせ：{返信用メールアドレス}\n',
         )
         self.project.ensure_slots()
 
@@ -542,7 +544,10 @@ class MailTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         message = mail.outbox[0]
         self.assertEqual(message.to, ['a@example.com'])
-        self.assertEqual(message.bcc, ['me@example.com'])
+        self.assertEqual(message.reply_to, ['lab@example.com'])
+        self.assertIn('問い合わせ：lab@example.com', message.body)
+        token = Reservation.objects.get(slot=slot).token
+        self.assertIn(f'変更：http://testserver/mailexp/reservation/{token}', message.body)
         self.assertEqual(message.subject, slot.label(with_year=True) + 'のご予約')
         self.assertIn('山田太郎 様', message.body)
         self.assertIn('https://example.com/zoom', message.body)
@@ -550,12 +555,12 @@ class MailTests(TestCase):
         self.client.post(reverse('confirm', args=['mailexp']), data)
         self.assertEqual(len(mail.outbox), 1)
 
-    def test_no_bcc_when_empty(self):
-        self.project.mail_bcc = ''
+    def test_no_reply_to_when_empty(self):
+        self.project.mail_reply_to = ''
         self.project.save()
         slot = tomorrow_slot(self.project)
         self.client.post(reverse('confirm', args=['mailexp']), {'slot': slot.pk, 'full_name': 'x', 'mail': 'a@example.com'})
-        self.assertEqual(mail.outbox[0].bcc, [])
+        self.assertEqual(mail.outbox[0].reply_to, [])
 
     def test_no_mail_when_disabled(self):
         self.project.mail_enabled = False
@@ -593,16 +598,75 @@ class MailSettingTests(TestCase):
         self.assertFalse(project.mail_enabled)
 
         response = self.client.post(reverse('setting_project', args=['m1']), {
-            'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on', 'mail_bcc': 'bad',
+            'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on', 'mail_reply_to': 'bad',
             'mail_subject': 's', 'mail_body': 'b',
         })
         self.assertEqual(response.status_code, 200)
 
         response = self.client.post(reverse('setting_project', args=['m1']), {
-            'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on', 'mail_bcc': 'me@example.com',
+            'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on', 'mail_reply_to': 'me@example.com',
             'mail_subject': 's', 'mail_body': 'b',
         })
         self.assertRedirects(response, reverse('setting_project', args=['m1']))
         project.refresh_from_db()
         self.assertTrue(project.mail_enabled)
-        self.assertEqual(project.mail_bcc, 'me@example.com')
+        self.assertEqual(project.mail_reply_to, 'me@example.com')
+
+
+class ManageReservationTests(TestCase):
+    """予約確認メールの {キャンセル用URL} から開く、予約の確認・変更・キャンセル"""
+
+    def setUp(self):
+        self.project = Project.objects.create(name='mng', duration=60, use_full_name=True, use_mail=True, mail_enabled=True)
+        self.project.ensure_slots()
+        day = datetime.date.today() + datetime.timedelta(days=2)
+        self.slot = lambda h, m=0: Slot.objects.get(project=self.project, start=datetime.datetime.combine(day, datetime.time(h, m)))
+        self.r = Reservation.objects.create(slot=self.slot(10), duration=60, full_name='山田', mail='a@example.com')
+        self.url = reverse('manage', args=['mng', self.r.token])
+
+    def test_manage_page(self):
+        page = self.client.get(self.url)
+        self.assertContains(page, self.r.label())
+        self.assertContains(page, '日時を変更する')
+        self.project.duration = 40
+        self.project.save()
+        self.assertContains(self.client.get(self.url), '<td>1時間</td>')  # 予約したときの所要時間
+        self.assertEqual(self.client.get(reverse('manage', args=['mng', 'wrong'])).status_code, 404)
+
+    def test_cancel(self):
+        response = self.client.post(reverse('cancel', args=['mng', self.r.token]))
+        self.assertContains(response, '予約をキャンセルしました')
+        self.assertFalse(Reservation.objects.exists())
+        self.assertTrue(can_book(self.project, self.slot(10)))
+
+    def test_change(self):
+        # 自分の予約は空きとして扱うので、30分後ろにずらすこともできる
+        page = self.client.get(reverse('change', args=['mng', self.r.token]))
+        self.assertContains(page, '日時の変更')
+        self.assertContains(page, 'この日時に変更する')
+        self.assertContains(page, f'value="{self.slot(10, 30).pk}"')
+        response = self.client.post(reverse('change', args=['mng', self.r.token]), {'slot': self.slot(10, 30).pk})
+        self.assertRedirects(response, self.url + '?changed=1')
+        self.r.refresh_from_db()
+        self.assertEqual(self.r.slot_id, self.slot(10, 30).pk)
+        self.assertEqual(self.r.full_name, '山田')  # 入力した内容はそのまま
+        self.assertEqual(len(mail.outbox), 1)      # 変更後の日時で確認メールを送る
+        self.assertIn('10:30', mail.outbox[0].body)
+        self.assertContains(self.client.get(self.url + '?changed=1'), '日時を変更しました')
+
+    def test_change_to_unavailable(self):
+        Reservation.objects.create(slot=self.slot(14), duration=60, full_name='別の人')
+        response = self.client.post(reverse('change', args=['mng', self.r.token]), {'slot': self.slot(13, 30).pk})
+        self.assertContains(response, 'この日時には変更できなくなりました')
+        self.r.refresh_from_db()
+        self.assertEqual(self.r.slot_id, self.slot(10).pk)
+
+    def test_past_reservation_cannot_change(self):
+        yesterday = datetime.date.today() - datetime.timedelta(days=1)
+        Slot.objects.create(project=self.project, start=datetime.datetime.combine(yesterday, datetime.time(10)))
+        past = Reservation.objects.create(
+            slot=Slot.objects.get(project=self.project, start=datetime.datetime.combine(yesterday, datetime.time(10))))
+        page = self.client.get(reverse('manage', args=['mng', past.token]))
+        self.assertContains(page, '変更・キャンセルできません')
+        self.client.post(reverse('cancel', args=['mng', past.token]))
+        self.assertTrue(Reservation.objects.filter(pk=past.pk).exists())

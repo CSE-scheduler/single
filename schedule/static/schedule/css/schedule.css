@@ -363,6 +363,30 @@ select:disabled {
     font-weight: var(--weight-bold);
 }
 
+/* 実施済み（謝金未払い）：黄色 */
+.mark--done {
+    color: #8A6500;
+    background-color: #FFF1BF;
+    font-size: var(--font-small);
+    font-weight: var(--weight-bold);
+}
+
+/* No Show：黒色 */
+.mark--no_show {
+    color: var(--white);
+    background-color: var(--text);
+    font-size: var(--font-small);
+    font-weight: var(--weight-bold);
+}
+
+/* テスト用 */
+.mark--test {
+    color: var(--gray-dark);
+    background-color: #ECEEF1;
+    font-size: var(--font-small);
+    font-weight: var(--weight-bold);
+}
+
 .mark--none {
     color: var(--gray-dark);
     background-color: var(--gray-light);
@@ -417,4 +441,8 @@ select:disabled {
 
 .table tbody tr:hover {
     background-color: var(--primary-hover);
+}
+
+.inline-form {
+    display: inline;
 }

@@ -7,11 +7,16 @@
     let current = Number(weekArea.dataset.index);
     weekArea.querySelectorAll('.week').forEach((el) => { weekEls[el.dataset.start] = el; });
 
+    function weekUrl(start) {
+        const url = weekArea.dataset.url;
+        return url + (url.includes('?') ? '&' : '?') + 'start=' + start;
+    }
+
     function loadWeek(index) {
         const start = weekStarts[index];
         if (weekEls[start]) return Promise.resolve(weekEls[start]);
         if (!weekLoading[start]) {
-            weekLoading[start] = fetch(weekArea.dataset.url + '?start=' + start, { headers: { 'X-Requested-With': 'fetch' } })
+            weekLoading[start] = fetch(weekUrl(start), { headers: { 'X-Requested-With': 'fetch' } })
                 .then((response) => {
                     if (!response.ok) throw new Error();
                     return response.text();
@@ -60,7 +65,7 @@
         const checkedValue = checked ? checked.value : null;
         await Promise.all(Object.entries(weekEls).map(async ([start, old]) => {
             try {
-                const response = await fetch(weekArea.dataset.url + '?start=' + start, { headers: { 'X-Requested-With': 'fetch' } });
+                const response = await fetch(weekUrl(start), { headers: { 'X-Requested-With': 'fetch' } });
                 if (!response.ok) return;
                 const template = document.createElement('template');
                 template.innerHTML = (await response.text()).trim();

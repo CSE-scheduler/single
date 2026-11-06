@@ -22,4 +22,7 @@ urlpatterns = [
     path('<str:project>/entry', views.entry, name='entry'),
     path('<str:project>/confirm', views.confirm, name='confirm'),
     path('<str:project>/complete', views.complete, name='complete'),
+    path('<str:project>/reservation/<str:token>', views.manage, name='manage'),
+    path('<str:project>/reservation/<str:token>/change', views.change, name='change'),
+    path('<str:project>/reservation/<str:token>/cancel', views.cancel, name='cancel'),
 ]

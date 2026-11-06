@@ -8,7 +8,7 @@ import datetime
 import jpholiday
 from django.db.models import Min
 
-from .models import DAY_NAMES, SLOT_MINUTES, TIME_OPTIONS, Reservation
+from .models import DAY_NAMES, SLOT_MINUTES, STATUS_MARKS, TIME_OPTIONS, Reservation
 
 WEEK = datetime.timedelta(days=7)
 DAY = datetime.timedelta(days=1)
@@ -32,7 +32,7 @@ class Availability:
     - 新しい予約は、ふさぐ枠がどれも空いていて、そのバッファに他の予約が入っていないときだけできる
     """
 
-    def __init__(self, project, first, last, now=None):
+    def __init__(self, project, first, last, now=None, exclude=None):
         self.project = project
         self.now = now or datetime.datetime.now()
         self.cutoff = project.close_cutoff(self.now)
@@ -43,6 +43,9 @@ class Availability:
         reservations = Reservation.objects.filter(
             slot__project=project, slot__start__gte=first - DAY, slot__start__lt=last + DAY,
         ).select_related('slot')
+        if exclude is not None:
+            # 日時を変更するときは、その人の今の予約はないものとして空きを調べる
+            reservations = reservations.exclude(pk=exclude.pk)
         self.occupied = {}
         self.blocked = set()
         for r in reservations:
@@ -66,11 +69,12 @@ class Availability:
         return not any(u in self.occupied for u in zone)
 
     def admin_state(self, t):
-        """設定画面での表示。open：◯（受付中）、closed：×（受付停止）、reserved：予（予約あり）、
-        paid：済（謝金支払い済み）、none：-（締め切った枠・募集期間外・予約の前後で閉じた枠。切り替えられない）"""
+        """設定画面での表示。open：◯（受付中）、closed：×（受付停止）、
+        予約が入っている枠は予約のステータス（reserved・done・paid・no_show・test）、
+        none：-（締め切った枠・募集期間外・予約の前後で閉じた枠。切り替えられない）"""
         r = self.occupied.get(t)
         if r is not None:
-            return 'paid' if r.paid else 'reserved'
+            return r.status
         slot = self.slots.get(t)
         if slot is None or t < self.cutoff or not self.project.in_period(t) or t in self.blocked:
             return 'none'
@@ -92,9 +96,9 @@ def _columns(first):
     return columns
 
 
-def _week(project, first, times, make_cell, now):
+def _week(project, first, times, make_cell, now, exclude=None):
     start = datetime.datetime.combine(first, datetime.time())
-    availability = Availability(project, start, start + WEEK, now)
+    availability = Availability(project, start, start + WEEK, now, exclude)
     columns = _columns(first)
     rows = [
         {'time': f'{t:%-H:%M}',
@@ -125,7 +129,7 @@ def user_week_starts(project, today=None):
     return starts
 
 
-def user_week(project, first, selected='', now=None):
+def user_week(project, first, selected='', now=None, exclude=None):
     times = [t for t in ALL_TIMES if project.time_start <= t < project.time_end]
 
     def cell(availability, t):
@@ -136,12 +140,12 @@ def user_week(project, first, selected='', now=None):
         slot = availability.slots[t]
         return {'slot': slot, 'label': slot.label(project.duration), 'checked': str(slot.pk) == selected}
 
-    return _week(project, first, times, cell, now)
+    return _week(project, first, times, cell, now, exclude)
 
 
-def can_book(project, slot, now=None):
-    """この枠から予約できるか（申し込みのときに確かめる）"""
-    return Availability(project, slot.start, slot.start + DAY, now).startable(slot.start)
+def can_book(project, slot, now=None, exclude=None):
+    """この枠から予約できるか（申し込み・日時の変更のときに確かめる）"""
+    return Availability(project, slot.start, slot.start + DAY, now, exclude).startable(slot.start)
 
 
 # ---- 設定画面用 ----
@@ -170,6 +174,7 @@ def admin_week(project, first, now=None):
         state = availability.admin_state(t)
         return {
             'state': state,
+            'mark': STATUS_MARKS.get(state, ''),
             'slot': availability.slots.get(t),
             'reservation': availability.occupied.get(t),
             'label': f'{t.month}月{t.day}日 {t:%-H:%M}',

@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 
 from .calendar import admin_week, admin_week_starts, toggleable
 from .forms import CLOSE_CHOICES, TIME_CHOICES, TITLE_FIELDS, NewProjectForm, PeriodForm, ProjectForm
-from .models import PROJECT_NAME_SYMBOLS, Project, Reservation, Slot
+from .models import PROJECT_NAME_SYMBOLS, RESERVATION_STATUSES, Project, Reservation, Slot
 
 SESSION_KEY = 'schedule_admin'
 
@@ -79,7 +79,7 @@ def home(request):
     projects = Project.objects.annotate(
         n_reservations=Count('slots__reservation'),
         n_upcoming=Count('slots__reservation', filter=Q(slots__start__gte=today_start)),
-        n_paid=Count('slots__reservation', filter=Q(slots__reservation__paid=True)),
+        n_paid=Count('slots__reservation', filter=Q(slots__reservation__status='paid')),
     )
     projects = list(projects)
     for project in projects:
@@ -209,10 +209,13 @@ def appointments(request, project):
     if request.method == 'POST':
         reservation = get_object_or_404(Reservation, pk=request.POST.get('id'), slot__project=project)
         action = request.POST.get('action')
-        if action == 'paid':
-            reservation.paid = request.POST.get('paid') == '1'
-            reservation.save(update_fields=['paid'])
-            return JsonResponse({'paid': reservation.paid})
+        if action == 'status':
+            status = request.POST.get('status')
+            if status not in dict(RESERVATION_STATUSES):
+                return JsonResponse({'error': 'ステータスが正しくありません。'}, status=400)
+            reservation.status = status
+            reservation.save(update_fields=['status'])
+            return JsonResponse({'status': reservation.status})
         if action == 'delete':
             label = reservation.label(with_year=True)
             reservation.delete()
@@ -263,7 +266,8 @@ def appointments(request, project):
         'project': project,
         'columns': columns,
         'rows': rows,
-        'n_paid': sum(1 for r in rows if r['obj'].paid),
+        'statuses': RESERVATION_STATUSES,
+        'counts': [(label, sum(1 for r in rows if r['obj'].status == key)) for key, label in RESERVATION_STATUSES],
         'date_sort_link': sort_link('date'),
         'date_sort_mark': sort_mark('date'),
         'sort': sort,

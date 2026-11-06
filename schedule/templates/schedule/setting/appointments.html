@@ -52,9 +52,18 @@
         white-space: nowrap;
     }
 
-    tr.paid td {
-        color: var(--gray-dark);
+    .status-select {
+        padding-top: 4px;
+        padding-bottom: 4px;
+        font-size: var(--font-medium-small);
     }
+
+    /* ステータスごとの色（カレンダーの記号と同じ） */
+    .status-select[data-status="reserved"] { color: var(--primary); }
+    .status-select[data-status="done"] { color: #8A6500; background-color: #FFF1BF; }
+    .status-select[data-status="paid"] { color: var(--secondary); }
+    .status-select[data-status="no_show"] { color: var(--white); background-color: var(--text); }
+    .status-select[data-status="test"] { color: var(--gray-dark); }
 {% endblock %}
 
 {% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ <a href="{% url 'setting_project' project.name %}">{{ project.name }}</a> ＞ 予約一覧{% endblock %}
@@ -80,7 +89,7 @@
         {% if date_from or date_to %}<a class="button button--sub" href="?sort={{ sort }}">解除</a>{% endif %}
     </form>
 
-    <p class="summary">{{ rows|length }}件（謝金支払い済み <span id="n-paid">{{ n_paid }}</span>件）{% if date_from or date_to %}　期間：{{ date_from|default:'' }} 〜 {{ date_to|default:'' }}{% endif %}</p>
+    <p class="summary">{{ rows|length }}件（{% for label, count in counts %}{{ label }} {{ count }}件{% if not forloop.last %}・{% endif %}{% endfor %}）{% if date_from or date_to %}　期間：{{ date_from|default:'' }} 〜 {{ date_to|default:'' }}{% endif %}</p>
 
     <div class="table-wrap">
         <table class="table">
@@ -93,18 +102,22 @@
                         {% else %}{{ column.title }}{% endif %}
                     </th>
                     {% endfor %}
-                    <th class="center">謝金支払い済み</th>
+                    <th>ステータス</th>
                     <th class="right"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in rows %}
-                <tr class="{% if row.obj.paid %}paid{% endif %}">
+                <tr>
                     <td class="date">{{ row.date }}</td>
                     {% for value in row.values %}
                     <td class="{% if value|length > 20 %}long{% endif %}">{{ value }}</td>
                     {% endfor %}
-                    <td class="center"><input type="checkbox" class="paid-check" data-id="{{ row.obj.pk }}" {% if row.obj.paid %}checked{% endif %} aria-label="謝金支払い済み"></td>
+                    <td>
+                        <select class="status-select" data-id="{{ row.obj.pk }}" data-status="{{ row.obj.status }}" aria-label="ステータス">
+                            {% for value, label in statuses %}<option value="{{ value }}" {% if value == row.obj.status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </td>
                     <td class="right">
                         <form class="inline-form" method="post" onsubmit="return confirm('{{ row.date|escapejs }} の予約を削除します。元に戻せません。よろしいですか？')">
                             {% csrf_token %}
@@ -126,27 +139,24 @@
 
 {% block script %}
 <script>
-    document.querySelectorAll('.paid-check').forEach((check) => {
-        check.addEventListener('change', async () => {
-            const body = new URLSearchParams({ action: 'paid', id: check.dataset.id, paid: check.checked ? '1' : '0' });
-            check.disabled = true;
+    // ステータスは選んだその場で保存する
+    document.querySelectorAll('.status-select').forEach((select) => {
+        select.addEventListener('change', async () => {
+            const previous = select.dataset.status;
+            select.disabled = true;
             try {
                 const response = await fetch(location.pathname, {
                     method: 'POST',
                     headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'fetch' },
-                    body,
+                    body: new URLSearchParams({ action: 'status', id: select.dataset.id, status: select.value }),
                 });
                 if (!response.ok) throw new Error();
-                const data = await response.json();
-                check.checked = data.paid;
-                check.closest('tr').classList.toggle('paid', data.paid);
-                const counter = document.getElementById('n-paid');
-                counter.textContent = document.querySelectorAll('.paid-check:checked').length;
+                select.dataset.status = (await response.json()).status;
             } catch (error) {
-                check.checked = !check.checked;
+                select.value = previous;
                 alert('保存できませんでした。画面を読み込みなおしてください。');
             } finally {
-                check.disabled = false;
+                select.disabled = false;
             }
         });
     });

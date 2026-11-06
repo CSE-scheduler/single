@@ -110,23 +110,23 @@
 
 {% block content %}
 <div class="main_text">
-    <h2>日時の選択</h2>
-    <p class="duration">所要時間：{{ project.duration_label }}</p>
+    <h2>{% if changing %}日時の変更{% else %}日時の選択{% endif %}</h2>
+    <p class="duration">所要時間：{{ project.duration_label }}{% if changing %}　現在のご予約：{{ changing.label }}{% endif %}</p>
 
     {% if week %}
-    <form method="post" action="{% url 'entry' project.name %}" class="timeframe-form">
+    <form method="post" action="{{ form_action }}" class="timeframe-form">
         {% csrf_token %}
         {% include 'schedule/_week_nav.html' %}
         {{ starts|json_script:"week-starts" }}
-        <div id="week-area" data-url="{% url 'week' project.name %}" data-index="{{ index }}" data-span="{{ span }}">
+        <div id="week-area" data-url="{{ week_url }}" data-index="{{ index }}" data-span="{{ span }}">
             {% include 'schedule/_user_week.html' %}
         </div>
 
         <div class="selected-area">
             <div class="selected-date selected-date--empty" id="selected-date">ご希望の日時を選択してください</div>
             <div class="button-group">
-                <a class="button button--sub" href="{% url 'consent' project.name %}">最初の画面に戻る</a>
-                <button type="submit" id="submit" disabled>入力画面へ</button>
+                <a class="button button--sub" href="{{ back_url }}">{{ back_label }}</a>
+                <button type="submit" id="submit" disabled>{{ submit_label }}</button>
             </div>
         </div>
     </form>

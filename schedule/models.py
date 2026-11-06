@@ -1,5 +1,6 @@
 import datetime
 import re
+import secrets
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -121,8 +122,27 @@ DEFAULT_MAIL_BODY = (
     'この度は実験にお申し込みいただきありがとうございます。\n'
     '下記の日時でご予約を承っております。\n\n'
     '日時：{日時}\n\n'
-    '当日はどうぞよろしくお願いいたします。\n'
+    '当日はどうぞよろしくお願いいたします。\n\n'
+    '▼予約の変更・キャンセルはこちらからお願いします。\n'
+    '{キャンセル用URL}\n\n'
+    '※本メールアドレスは送信専用です。\n'
+    'お問い合わせ：{返信用メールアドレス}\n'
 )
+
+# 予約のステータス（予約一覧で変える）と、設定画面のカレンダーでの記号
+RESERVATION_STATUSES = [
+    ('reserved', '予約済み'),
+    ('done', '実施済み（謝金未払い）'),
+    ('paid', '謝金支払い済み'),
+    ('no_show', 'No Show'),
+    ('test', 'テスト用'),
+]
+STATUS_MARKS = {'reserved': '予', 'done': '未', 'paid': '済', 'no_show': 'N', 'test': 'テ'}
+
+
+def new_token():
+    # 予約の確認・変更・キャンセルのページのURLに使う、推測できない文字列
+    return secrets.token_urlsafe(16)
 
 
 def _html(text):
@@ -166,7 +186,8 @@ class Project(models.Model):
 
     # 予約確認メール（予約が完了したときに送る）
     mail_enabled = models.BooleanField('確認メールを送る', default=False)
-    mail_bcc = models.EmailField('BCC', blank=True, default='')
+    # 返信用メールアドレス（メールの返信先。本文の {返信用メールアドレス} にも入る）
+    mail_reply_to = models.EmailField('返信用メールアドレス', blank=True, default='')
     mail_subject = models.CharField('件名', max_length=200, blank=True, default=DEFAULT_MAIL_SUBJECT)
     mail_body = models.TextField('本文', blank=True, default=DEFAULT_MAIL_BODY)
 
@@ -329,8 +350,10 @@ class Reservation(models.Model):
     extra5 = models.BooleanField('その他5', null=True, blank=True)
     extra6 = models.BooleanField('その他6', null=True, blank=True)
 
-    # 謝金を支払い済みか（予約一覧の画面で変える）
-    paid = models.BooleanField('謝金支払い済み', default=False)
+    # ステータス（予約一覧の画面で変える）
+    status = models.CharField('ステータス', max_length=10, choices=RESERVATION_STATUSES, default='reserved')
+    # 参加者が予約の確認・変更・キャンセルをするページのURLに使う
+    token = models.CharField(max_length=32, unique=True, default=new_token, editable=False)
 
     class Meta:
         ordering = ['slot__start']
@@ -353,6 +376,9 @@ class Reservation(models.Model):
 
     def label(self, with_year=False):
         return time_range_label(self.slot.start, self.duration, with_year)
+
+    def duration_label(self):
+        return minutes_label(self.duration)
 
     def display(self, key):
         value = getattr(self, key)

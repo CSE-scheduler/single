@@ -1,4 +1,4 @@
-"""参加者が使う画面：同意画面 → 日時選択 → 入力 → 予約完了"""
+"""参加者が使う画面：同意画面 → 日時選択 → 入力 → 予約完了、と予約の確認・変更・キャンセル"""
 
 import datetime
 from urllib.parse import quote
@@ -6,12 +6,13 @@ from urllib.parse import quote
 from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 
 from .calendar import can_book, user_week, user_week_starts
 from .forms import reservation_form, reservation_values
 from .mail import send_confirmation
-from .models import SLOT_MINUTES, Project, Reservation, Slot
+from .models import Project, Reservation, Slot
 
 
 def _project(name):
@@ -38,10 +39,8 @@ def manual(request, project):
     return response
 
 
-# 日時選択と入力の画面はブラウザに保存させない（「戻る」でも最新の空き状況を出す）
-@never_cache
-def timeframe(request, project):
-    project = _project(project)
+def _timeframe_page(request, project, changing=None):
+    """日時選択の画面。changing を渡すと、その予約の日時を変更する画面になる"""
     starts = user_week_starts(project)
     selected = request.POST.get('slot', '') or request.GET.get('slot', '')
     # 最初は1週間分だけ作る。入力画面から戻ってきたときは、選んでいた日時の週を開く
@@ -49,14 +48,38 @@ def timeframe(request, project):
     slot = _get_slot(project, selected)
     if slot and starts:
         index = min(max((slot.start.date() - starts[0]).days // 7, 0), len(starts) - 1)
+    week_url = reverse('week', args=[project.name])
     params = {
         'project': project,
         'starts': [d.isoformat() for d in starts],
         'index': index,
-        'week': user_week(project, starts[index], selected) if starts else None,
+        'week': user_week(project, starts[index], selected, exclude=changing) if starts else None,
         'span': project.slot_count,
+        'changing': changing,
     }
+    if changing:
+        params.update({
+            'form_action': reverse('change', args=[project.name, changing.token]),
+            'week_url': f'{week_url}?change={changing.token}',
+            'back_url': reverse('manage', args=[project.name, changing.token]),
+            'back_label': '予約の確認に戻る',
+            'submit_label': 'この日時に変更する',
+        })
+    else:
+        params.update({
+            'form_action': reverse('entry', args=[project.name]),
+            'week_url': week_url,
+            'back_url': reverse('consent', args=[project.name]),
+            'back_label': '最初の画面に戻る',
+            'submit_label': '入力画面へ',
+        })
     return render(request, 'schedule/timeframe.html', params)
+
+
+# 日時選択と入力の画面はブラウザに保存させない（「戻る」でも最新の空き状況を出す）
+@never_cache
+def timeframe(request, project):
+    return _timeframe_page(request, _project(project))
 
 
 @never_cache
@@ -69,7 +92,10 @@ def week(request, project):
         raise Http404
     if first not in user_week_starts(project):
         raise Http404
-    return render(request, 'schedule/_user_week.html', {'week': user_week(project, first)})
+    changing = None
+    if request.GET.get('change'):
+        changing = get_object_or_404(Reservation, token=request.GET['change'], slot__project=project)
+    return render(request, 'schedule/_user_week.html', {'week': user_week(project, first, exclude=changing)})
 
 
 def _get_slot(project, slot_id):
@@ -136,7 +162,7 @@ def confirm(request, project):
 
     request.session[key] = reservation.pk
     # 予約確認メール（送れなくても予約は保存済みなので、エラー画面にはしない）
-    send_confirmation(reservation)
+    send_confirmation(reservation, _manage_url(request, reservation))
     return redirect('complete', project.name)
 
 
@@ -150,4 +176,82 @@ def complete(request, project):
     return render(request, 'schedule/complete.html', {
         'project': project,
         'text': project.complete_html(reservation.label(with_year=True)),
+    })
+
+
+# ---- 予約の確認・変更・キャンセル（予約確認メールの {キャンセル用URL} から開く） ----
+
+def _manage_url(request, reservation):
+    return request.build_absolute_uri(reverse('manage', args=[reservation.slot.project.name, reservation.token]))
+
+
+def _reservation(project, token):
+    return get_object_or_404(Reservation.objects.select_related('slot'), token=token, slot__project=project)
+
+
+def _editable(reservation):
+    # 始まる前の予約だけ、変更・キャンセルできる
+    return reservation.start > datetime.datetime.now()
+
+
+@never_cache
+def manage(request, project, token):
+    project = _project(project)
+    reservation = _reservation(project, token)
+    return render(request, 'schedule/manage.html', {
+        'project': project,
+        'reservation': reservation,
+        'editable': _editable(reservation),
+        'changed': request.GET.get('changed') == '1',
+    })
+
+
+@never_cache
+def change(request, project, token):
+    project = _project(project)
+    reservation = _reservation(project, token)
+    manage_url = reverse('manage', args=[project.name, token])
+    if not _editable(reservation):
+        return redirect(manage_url)
+    if request.method != 'POST':
+        return _timeframe_page(request, project, changing=reservation)
+
+    unavailable = render(request, 'schedule/message.html', {
+        'project': project, 'title': '申し訳ございません',
+        'message': 'この日時には変更できなくなりました。お手数ですが、日時を選択しなおしてください。',
+        'back_url': reverse('change', args=[project.name, token]), 'back_label': '日時を選択しなおす',
+    })
+    try:
+        with transaction.atomic():
+            Project.objects.select_for_update().get(pk=project.pk)
+            reservation = Reservation.objects.select_for_update().select_related('slot').get(pk=reservation.pk)
+            try:
+                slot = Slot.objects.get(project=project, pk=int(request.POST.get('slot', '')))
+            except (Slot.DoesNotExist, ValueError):
+                return redirect('change', project.name, token)
+            if slot.pk == reservation.slot_id:
+                return redirect(manage_url)
+            if Reservation.objects.filter(slot=slot).exists() or not can_book(project, slot, exclude=reservation):
+                return unavailable
+            reservation.slot = slot
+            reservation.duration = project.duration
+            reservation.save(update_fields=['slot', 'duration'])
+    except IntegrityError:
+        return unavailable
+
+    send_confirmation(reservation, _manage_url(request, reservation))
+    return redirect(f'{manage_url}?changed=1')
+
+
+def cancel(request, project, token):
+    project = _project(project)
+    reservation = _reservation(project, token)
+    if request.method != 'POST' or not _editable(reservation):
+        return redirect('manage', project.name, token)
+    label = reservation.label(with_year=True)
+    reservation.delete()
+    return render(request, 'schedule/message.html', {
+        'project': project, 'title': '予約をキャンセルしました',
+        'message': f'{label} のご予約をキャンセルしました。',
+        'back_url': reverse('timeframe', args=[project.name]), 'back_label': '別の日時で予約する',
     })
