@@ -98,8 +98,8 @@
                     <th><a href="{{ date_sort_link }}">日時 <span class="sort-mark">{{ date_sort_mark|default:'⇅' }}</span></a></th>
                     {% for column in columns %}
                     <th>
-                        {% if column.sort_link %}<a href="{{ column.sort_link }}">{{ column.title }} <span class="sort-mark">{{ column.sort_mark|default:'⇅' }}</span></a>
-                        {% else %}{{ column.title }}{% endif %}
+                        {% if column.sort_link %}<a href="{{ column.sort_link }}">{{ column.header }} <span class="sort-mark">{{ column.sort_mark|default:'⇅' }}</span></a>
+                        {% else %}{{ column.header }}{% endif %}
                     </th>
                     {% endfor %}
                     <th>ステータス</th>

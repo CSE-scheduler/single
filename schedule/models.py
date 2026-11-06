@@ -102,20 +102,23 @@ FIELDS = [
 SEX_CHOICES = [('male', '男性'), ('female', '女性'), ('other', 'その他')]
 
 
+# 入力画面に出す項目名（その他1〜6以外は変えられない）。ここに書いていない項目は FIELDS の項目名を出す
+FIELD_QUESTIONS = {
+    'data_reuse': '関連研究でデータを再利用してもよろしいですか？（同意は任意です）',
+}
+
+# 最初の画面（同意画面）と予約完了画面は、ページタイトル（h2）と本文に分けて設定する
+DEFAULT_CONSENT_TITLE = '実験へのご協力のお願い'
 DEFAULT_CONSENT_TEXT = (
-    '<h2>実験へのご協力のお願い</h2>\n'
-    '<p>この度は実験へのご参加をご検討いただきありがとうございます。</p>\n'
-    '<p>下の「説明書を読む」から説明書をお読みいただき、内容にご同意いただける場合は「次へ進む」を押して、日時をお選びください。</p>'
+    'この度は実験へのご参加をご検討いただきありがとうございます。\n'
+    '下の「説明書を読む」から説明書をお読みいただき、内容にご同意いただける場合は「次へ進む」を押して、日時をお選びください。'
 )
+DEFAULT_COMPLETE_TITLE = 'お申し込みが完了しました'
 DEFAULT_COMPLETE_TEXT = (
-    '<h2>お申し込みが完了しました</h2>\n'
-    '<p>{日時} でご予約を承りました。</p>\n'
-    '<p>当日はどうぞよろしくお願いいたします。</p>'
+    '{日時} でご予約を承りました。\n'
+    '当日はどうぞよろしくお願いいたします。'
 )
 
-
-# 行の終わりがこれらのタグなら、改行を <br> にしない（見出しや段落のあとに余計な空行ができないように）
-_BLOCK_TAG_END = re.compile(r'(</?(?:h[1-6]|p|div|ul|ol|li|table|thead|tbody|tr|th|td|br|hr)\b[^>]*>)[ \t]*\n', re.I)
 DEFAULT_MAIL_SUBJECT = '【実験】ご予約の確認'
 DEFAULT_MAIL_BODY = (
     '{氏名} 様\n\n'
@@ -125,6 +128,15 @@ DEFAULT_MAIL_BODY = (
     '当日はどうぞよろしくお願いいたします。\n\n'
     '▼予約の変更・キャンセルはこちらからお願いします。\n'
     '{キャンセル用URL}\n\n'
+    '※本メールアドレスは送信専用です。\n'
+    'お問い合わせ：{返信用メールアドレス}\n'
+)
+DEFAULT_CANCEL_SUBJECT = '【実験】ご予約のキャンセル'
+DEFAULT_CANCEL_BODY = (
+    '{氏名} 様\n\n'
+    '下記の日時のご予約をキャンセルしました。\n\n'
+    '日時：{日時}\n\n'
+    'またのご参加をお待ちしております。\n\n'
     '※本メールアドレスは送信専用です。\n'
     'お問い合わせ：{返信用メールアドレス}\n'
 )
@@ -145,10 +157,29 @@ def new_token():
     return secrets.token_urlsafe(16)
 
 
-def _html(text):
-    # 設定画面で入力した文言は、HTMLタグをそのまま使え、改行も反映する（入力できるのは設定画面に入れる人だけ）
-    text = _BLOCK_TAG_END.sub(r'\1', text.replace('\r\n', '\n'))
-    return mark_safe(text.replace('\n', '<br>'))
+# 1行がまるごとこれらのタグで始まるときは <p> で囲まない（リストや表などをそのまま書けるように）
+_BLOCK_LINE = re.compile(r'^\s*</?(?:h[1-6]|p|div|ul|ol|li|table|thead|tbody|tr|th|td|hr|blockquote)\b', re.I)
+# href="example.com" のように https:// のないリンクには https:// をつける（つけないと、このサイトの中のページになる）
+_HREF = re.compile(r'(href\s*=\s*["\'])(?!https?:|mailto:|tel:|/|#)', re.I)
+# タグの外にそのまま書いたURLはリンクにする
+_BARE_URL = re.compile(r'(?<![="\'>/\w])(https?://[^\s<>"\']+)')
+
+
+def _paragraphs(text):
+    """設定画面で入力した本文を、1行ずつ <p> にする（空の行は1行ぶんの余白）。
+    行の途中のHTMLタグ（<a href="...">リンク</a>、<strong>強調</strong> など）はそのまま使える。
+    入力できるのは設定画面に入れる人だけなので、HTMLは消さない"""
+    text = _HREF.sub(r'\1https://', text.replace('\r\n', '\n'))
+    text = _BARE_URL.sub(r'<a href="\1" target="_blank" rel="noopener">\1</a>', text)
+    html = []
+    for line in text.strip('\n').split('\n'):
+        if not line.strip():
+            html.append('<br>')
+        elif _BLOCK_LINE.match(line):
+            html.append(line)
+        else:
+            html.append(f'<p>{line}</p>')
+    return mark_safe('\n'.join(html))
 
 
 class Project(models.Model):
@@ -173,23 +204,29 @@ class Project(models.Model):
     buffer_minutes = models.PositiveSmallIntegerField(default=30)
 
     # 最初の画面（同意画面）
-    consent_text = models.TextField('最初の画面の文言', blank=True, default=DEFAULT_CONSENT_TEXT)
+    consent_title = models.CharField('最初の画面のページタイトル', max_length=200, blank=True, default=DEFAULT_CONSENT_TITLE)
+    consent_text = models.TextField('最初の画面の本文', blank=True, default=DEFAULT_CONSENT_TEXT)
     # 説明書はデータベースに入れる（サーバーのファイルを気にせず、MySQL・SQLiteのどちらでも使える）
     manual_data = models.BinaryField(null=True, blank=True, editable=False)
     manual_name = models.CharField(max_length=255, blank=True, default='', editable=False)
     manual_type = models.CharField(max_length=100, blank=True, default='', editable=False)
 
     # 予約完了画面
-    complete_text = models.TextField('予約完了画面の文言', blank=True, default=DEFAULT_COMPLETE_TEXT)
+    complete_title = models.CharField('予約完了画面のページタイトル', max_length=200, blank=True, default=DEFAULT_COMPLETE_TITLE)
+    complete_text = models.TextField('予約完了画面の本文', blank=True, default=DEFAULT_COMPLETE_TEXT)
     complete_button_text = models.CharField('遷移ボタンの文言', max_length=200, blank=True, default='')
     complete_button_url = models.CharField('遷移ボタンの遷移先', max_length=2000, blank=True, default='')
 
-    # 予約確認メール（予約が完了したときに送る）
+    # 予約確認メール（予約が完了したとき・日時を変更したときに送る）と、キャンセルのメール
     mail_enabled = models.BooleanField('確認メールを送る', default=False)
     # 返信用メールアドレス（メールの返信先。本文の {返信用メールアドレス} にも入る）
     mail_reply_to = models.EmailField('返信用メールアドレス', blank=True, default='')
+    # 返信用メールアドレスにもBCCで送る（予約・キャンセルの通知の代わり）
+    mail_bcc_self = models.BooleanField('予約メールを自分も受け取る', default=True)
     mail_subject = models.CharField('件名', max_length=200, blank=True, default=DEFAULT_MAIL_SUBJECT)
     mail_body = models.TextField('本文', blank=True, default=DEFAULT_MAIL_BODY)
+    mail_cancel_subject = models.CharField('キャンセルのメールの件名', max_length=200, blank=True, default=DEFAULT_CANCEL_SUBJECT)
+    mail_cancel_body = models.TextField('キャンセルのメールの本文', blank=True, default=DEFAULT_CANCEL_BODY)
 
     # 予約のときに取得する項目（取得する・しない）
     use_full_name = models.BooleanField(default=True)
@@ -218,7 +255,8 @@ class Project(models.Model):
         return self.name
 
     def field_title(self, key):
-        default = dict((k, label) for k, label, _, _ in FIELDS)[key]
+        """入力画面に出す項目名"""
+        default = FIELD_QUESTIONS.get(key) or dict((k, label) for k, label, _, _ in FIELDS)[key]
         return getattr(self, f'title_{key}', '') or default
 
     def fields(self, only_used=True):
@@ -231,14 +269,19 @@ class Project(models.Model):
             result.append({
                 'key': key, 'label': label, 'kind': kind, 'editable': editable,
                 'used': used, 'title': self.field_title(key),
+                # 予約一覧の列見出し（その他1〜6は設定した項目名、それ以外は短い名前）
+                'header': self.field_title(key) if editable else label,
             })
         return result
 
     def consent_html(self):
-        return _html(self.consent_text)
+        return _paragraphs(self.consent_text)
+
+    def complete_title_text(self, date_text):
+        return self.complete_title.replace('{日時}', date_text)
 
     def complete_html(self, date_text):
-        return _html(self.complete_text.replace('{日時}', date_text))
+        return _paragraphs(self.complete_text.replace('{日時}', date_text))
 
     def in_period(self, start):
         """この時刻に始まる枠が募集期間（日付と時間帯）の中か"""

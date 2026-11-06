@@ -73,50 +73,6 @@
         outline-offset: -2px;
     }
 
-    /* 新規プロジェクト作成のモーダル */
-    .modal {
-        width: min(480px, calc(100% - 32px));
-        padding: 32px;
-        border: none;
-        border-radius: var(--border-radius-base);
-        box-shadow: var(--shadow-large);
-        color: var(--text);
-    }
-
-    .modal::backdrop {
-        background-color: rgba(51, 51, 51, 0.4);
-    }
-
-    .modal__head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-    }
-
-    .modal__close {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        padding: 0;
-        border-radius: 4px;
-        color: var(--gray-dark);
-        background-color: transparent;
-    }
-
-    .modal__close:hover {
-        background-color: var(--primary-hover);
-    }
-
-    .modal input[type="text"] {
-        width: 100%;
-    }
-
-    .modal .button-group {
-        justify-content: flex-end;
-    }
 {% endblock %}
 
 {% block breadcrumb %}プロジェクト一覧{% endblock %}

@@ -86,10 +86,32 @@
         width: 100%;
     }
 
-    .fields-table .kind {
-        font-size: var(--font-small);
-        color: var(--gray-dark);
-        white-space: nowrap;
+    /* 「取得する」のチェックボックスは列の真ん中に置く */
+    .fields-table td.center input[type="checkbox"] {
+        display: block;
+        margin: 0 auto;
+    }
+
+    .fields-table label {
+        font-weight: 400;
+        cursor: pointer;
+    }
+
+    /* 確認メールを送らないあいだは、メールの欄を薄くして入力できないようにする */
+    .mail-detail {
+        margin: 0;
+        padding: 0;
+        border: none;
+        min-width: 0;
+    }
+
+    .mail-detail:disabled {
+        opacity: 0.45;
+    }
+
+    .mail-detail h4 {
+        margin: 28px 0 12px;
+        font-weight: var(--weight-bold);
     }
 
     .checkbox-label {
@@ -161,7 +183,7 @@
         z-index: 10;
         padding: 10px 16px;
         border-radius: var(--border-radius-base);
-        background-color: var(--text);
+        background-color: var(--primary);
         color: var(--white);
         font-size: var(--font-medium-small);
         box-shadow: var(--shadow-large);
@@ -197,13 +219,6 @@
         flex-wrap: wrap;
         gap: 16px;
         margin-bottom: 8px;
-    }
-
-    .manual-current label {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-weight: 400;
     }
 
     /* main.cssでは見えなくしているファイル選択欄を、設定画面では見えるようにする */
@@ -303,7 +318,7 @@
         </div>
     </div>
 
-    <form method="post" enctype="multipart/form-data" class="autosave" id="settings-form" novalidate>
+    <form method="post" class="autosave" id="settings-form" novalidate>
         {% csrf_token %}
         <input type="hidden" name="action" value="settings">
 
@@ -311,50 +326,53 @@
         <div class="section">
             <h3>最初の画面（同意画面）</h3>
             <div class="form-group">
-                <label for="id_consent_text">文言</label>
-                <textarea name="consent_text" id="id_consent_text" rows="10">{{ form.consent_text.value|default:'' }}</textarea>
-                <p class="note">改行はそのまま反映されます。HTMLタグ（&lt;h2&gt;見出し&lt;/h2&gt;、&lt;strong&gt;強調&lt;/strong&gt; など）も使えます。</p>
+                <label for="id_consent_title">ページタイトル</label>
+                <input type="text" name="consent_title" id="id_consent_title" maxlength="200" value="{{ form.consent_title.value|default:'' }}">
+                {{ form.consent_title.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_consent_text">本文</label>
+                <textarea name="consent_text" id="id_consent_text" rows="8">{{ form.consent_text.value|default:'' }}</textarea>
+                {% include 'schedule/setting/_body_note.html' %}
                 {{ form.consent_text.errors }}
             </div>
             <div class="form-group">
-                <label for="id_manual">説明書</label>
+                <label class="checkbox-label"><input type="checkbox" id="manual-enabled" data-no-autosave {% if project.manual_data %}checked{% endif %}> 説明書を添付する</label>
                 {% if project.manual_data %}
                 <div class="manual-current">
-                    <span>現在の説明書：<a href="{% url 'manual' project.name %}" target="_blank" rel="noopener">{{ project.manual_name }}</a></span>
-                    <label><input type="checkbox" name="manual_clear" value="on"> 説明書を削除する</label>
+                    <span>添付している説明書：<a href="{% url 'manual' project.name %}" target="_blank" rel="noopener">{{ project.manual_name }}</a></span>
+                    <button type="button" class="button--sub button--small" id="manual-replace">差し替える</button>
                 </div>
+                <p class="note">参加者が「説明書を読む」を押すと「次へ進む」が押せるようになります。チェックを外すと説明書を削除します。</p>
                 {% else %}
-                <p class="note">説明書がないときは、「説明書を読む」ボタンを出さず、「次へ進む」をすぐ押せるようにします。</p>
+                <p class="note">添付すると、最初の画面に「説明書を読む」ボタンが出て、それを押すまで「次へ進む」が押せなくなります。添付しないときは「次へ進む」をすぐ押せます。</p>
                 {% endif %}
-                <input type="file" name="manual" id="id_manual" accept=".pdf,.png,.jpg,.jpeg">
-                <p class="note">PDF・PNG・JPEG（10MBまで）。新しいファイルを選んで保存すると差し替わります。参加者が「説明書を読む」を押すと「次へ進む」が押せるようになります。</p>
-                {{ form.manual.errors }}
             </div>
         </div>
 
         <!-- ===== 取得するデータ ===== -->
         <div class="section">
-            <h3>日程調整のときに取得するデータ</h3>
+            <h3>取得するデータ</h3>
             <p class="note">「取得する」にした項目だけが入力画面に出ます（すべて入力必須）。その他1〜6は、入力画面に出す項目名（質問文）を入力してください。</p>
             <div class="table-wrap">
                 <table class="table fields-table">
+                    <colgroup><col style="width: 96px"><col><col style="width: 200px"></colgroup>
                     <thead>
-                        <tr><th class="center">取得する</th><th>項目</th><th>入力画面に出す項目名</th><th>回答の形式</th></tr>
+                        <tr><th class="center">取得する</th><th>入力画面に出す項目名</th><th>回答の形式</th></tr>
                     </thead>
                     <tbody>
                         {% for field in fields %}
                         <tr>
-                            <td class="center"><input type="checkbox" name="{{ field.use.html_name }}" id="{{ field.use.id_for_label }}" {% if field.use.value %}checked{% endif %}></td>
-                            <td><label for="{{ field.use.id_for_label }}">{{ field.label }}</label></td>
+                            <td class="center"><input type="checkbox" name="{{ field.use.html_name }}" id="{{ field.use.id_for_label }}" aria-label="{{ field.label }}を取得する" {% if field.use.value %}checked{% endif %}></td>
                             <td>
                                 {% if field.title_field %}
-                                <input type="text" name="{{ field.title_field.html_name }}" maxlength="500" value="{{ field.title_field.value|default:'' }}" placeholder="例：{% if field.kind == 'bool' %}過去に同様の実験に参加したことがありますか{% else %}学部・学年{% endif %}">
+                                <input type="text" name="{{ field.title_field.html_name }}" maxlength="500" aria-label="{{ field.label }}の項目名" value="{{ field.title_field.value|default:'' }}" placeholder="{{ field.label }}（例：{% if field.kind == 'bool' %}過去に同様の実験に参加したことがありますか{% else %}学部・学年{% endif %}）">
                                 {{ field.title_field.errors }}
                                 {% else %}
-                                {{ field.label }}
+                                <label for="{{ field.use.id_for_label }}">{{ field.title }}</label>
                                 {% endif %}
                             </td>
-                            <td class="kind">
+                            <td>
                                 {% if field.kind == 'bool' %}はい／いいえ
                                 {% elif field.kind == 'textarea' %}自由記述
                                 {% elif field.kind == 'sex' %}男性／女性／その他
@@ -373,9 +391,15 @@
         <div class="section">
             <h3>予約完了画面</h3>
             <div class="form-group">
-                <label for="id_complete_text">文言</label>
-                <textarea name="complete_text" id="id_complete_text" rows="8">{{ form.complete_text.value|default:'' }}</textarea>
-                <p class="note">「{日時}」と書いたところは、予約した日時（例：2026年11月5日(木) 10:30〜11:00）に置き換わります。改行・HTMLタグも使えます。</p>
+                <label for="id_complete_title">ページタイトル</label>
+                <input type="text" name="complete_title" id="id_complete_title" class="highlight" data-placeholders='["{日時}"]' maxlength="200" value="{{ form.complete_title.value|default:'' }}">
+                {{ form.complete_title.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_complete_text">本文</label>
+                <textarea name="complete_text" id="id_complete_text" class="highlight" data-placeholders='["{日時}"]' rows="6">{{ form.complete_text.value|default:'' }}</textarea>
+                {% include 'schedule/setting/_body_note.html' %}
+                <p class="note"><span class="placeholder">{日時}</span> と書いたところは、予約した日時（例：2026年11月5日(木) 10:30〜11:00）に置き換わります。</p>
                 {{ form.complete_text.errors }}
             </div>
             <div class="form-group">
@@ -396,32 +420,96 @@
             <h3>予約確認メール</h3>
             {% if not mail_ready %}<p class="error">送信用のメールアカウント（local_settings.py の EMAIL_HOST_USER・EMAIL_HOST_PASSWORD）が設定されていないため、今はメールが送られません。</p>{% endif %}
             <div class="form-group">
-                <label class="checkbox-label"><input type="checkbox" name="mail_enabled" id="id_mail_enabled" {% if form.mail_enabled.value %}checked{% endif %}> 予約が完了したときに確認メールを送る</label>
-                <p class="note">予約した人の「メールアドレス」に送ります（上の「取得するデータ」でメールアドレスを「取得する」にしてください）。</p>
+                <label class="checkbox-label"><input type="checkbox" name="mail_enabled" id="id_mail_enabled" {% if form.mail_enabled.value %}checked{% endif %}> 予約確認メールを送る</label>
+                <p class="note">予約したとき・日時を変更したときは確認メールを、キャンセルしたときはキャンセルのメールを、予約した人の「メールアドレス」に送ります。</p>
                 {{ form.mail_enabled.errors }}
             </div>
-            <div class="form-group">
-                <label for="id_mail_subject">確認メールのタイトル</label>
-                <input type="text" name="mail_subject" id="id_mail_subject" maxlength="200" value="{{ form.mail_subject.value|default:'' }}">
-                {{ form.mail_subject.errors }}
-            </div>
-            <div class="form-group">
-                <label for="id_mail_reply_to">返信用メールアドレス</label>
-                <input type="email" name="mail_reply_to" id="id_mail_reply_to" maxlength="254" value="{{ form.mail_reply_to.value|default:'' }}" placeholder="例：yourname@example.com">
-                <p class="note">参加者がメールに返信すると、このアドレスに届きます。本文の「{返信用メールアドレス}」にもこのアドレスが入ります。</p>
-                {{ form.mail_reply_to.errors }}
-            </div>
-            <div class="form-group">
-                <label for="id_mail_body">メール本文</label>
-                <textarea name="mail_body" id="id_mail_body" rows="12">{{ form.mail_body.value|default:'' }}</textarea>
-                <p class="note">本文とタイトルでは、次の文字が置き換わります。「{日時}」→予約した日時、「{氏名}」→入力された氏名、「{返信用メールアドレス}」→上で入力したアドレス、「{キャンセル用URL}」→その予約の変更・キャンセルのページのURL（予約ごとに違います）。</p>
-                <p class="note">文字だけのメールとして送ります。https:// で始まるURLをそのまま書けば、ほとんどのメールアプリでリンクになります。URLの直後に文字が続くとリンクの範囲がずれることがあるので、URLは1行に単独で書いてください。</p>
-                {{ form.mail_body.errors }}
-            </div>
+            <fieldset class="mail-detail" id="mail-detail" {% if not form.mail_enabled.value %}disabled{% endif %}>
+                <div class="form-group">
+                    <label for="id_mail_reply_to">返信用メールアドレス</label>
+                    <input type="email" name="mail_reply_to" id="id_mail_reply_to" maxlength="254" value="{{ form.mail_reply_to.value|default:'' }}" placeholder="例：yourname@example.com">
+                    <p class="note">参加者がメールの「返信」を押すと、このアドレス宛てになります。本文の <span class="placeholder">{返信用メールアドレス}</span> にもこのアドレスが入ります。</p>
+                    {{ form.mail_reply_to.errors }}
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label"><input type="checkbox" name="mail_bcc_self" id="id_mail_bcc_self" {% if form.mail_bcc_self.value %}checked{% endif %}> 予約メールを自分も受け取る</label>
+                    <p class="note">参加者に送るのと同じメールが、返信用メールアドレスにもBCCで届きます。BCCで予約メールを受け取ることで、通知の代わりになります。</p>
+                </div>
+
+                <h4>予約したとき・日時を変更したとき</h4>
+                <div class="form-group">
+                    <label for="id_mail_subject">確認メールのタイトル</label>
+                    <input type="text" name="mail_subject" id="id_mail_subject" class="highlight" maxlength="200" value="{{ form.mail_subject.value|default:'' }}">
+                    {{ form.mail_subject.errors }}
+                </div>
+                <div class="form-group">
+                    <label for="id_mail_body">確認メールの本文</label>
+                    <textarea name="mail_body" id="id_mail_body" class="highlight" rows="14">{{ form.mail_body.value|default:'' }}</textarea>
+                    {{ form.mail_body.errors }}
+                </div>
+
+                <h4>キャンセルしたとき</h4>
+                <div class="form-group">
+                    <label for="id_mail_cancel_subject">キャンセルのメールのタイトル</label>
+                    <input type="text" name="mail_cancel_subject" id="id_mail_cancel_subject" class="highlight" maxlength="200" value="{{ form.mail_cancel_subject.value|default:'' }}">
+                    {{ form.mail_cancel_subject.errors }}
+                </div>
+                <div class="form-group">
+                    <label for="id_mail_cancel_body">キャンセルのメールの本文</label>
+                    <textarea name="mail_cancel_body" id="id_mail_cancel_body" class="highlight" rows="10">{{ form.mail_cancel_body.value|default:'' }}</textarea>
+                    {{ form.mail_cancel_body.errors }}
+                </div>
+
+                <p class="note">タイトルと本文では、次の文字が置き換わります。
+                    <span class="placeholder">{日時}</span> 予約した日時、
+                    <span class="placeholder">{氏名}</span> 入力された氏名、
+                    <span class="placeholder">{返信用メールアドレス}</span> 上で入力したアドレス、
+                    <span class="placeholder">{キャンセル用URL}</span> その予約の変更・キャンセルのページのURL（予約ごとに違います。確認メールだけで使えます）。</p>
+                <p class="note">文字だけのメールとして送ります。https:// で始まるURLをそのまま書けば、ほとんどのメールアプリでリンクになります。URLは1行に単独で書いてください。</p>
+            </fieldset>
         </div>
 
     </form>
 </div>
+
+<!-- 確認メールを送る設定にするときに、返信用メールアドレスを入れてもらうモーダル -->
+<dialog class="modal" id="mail-modal" aria-labelledby="mail-modal-title">
+    <div class="modal__head">
+        <h3 id="mail-modal-title">予約確認メールを送る</h3>
+        <button type="button" class="modal__close" data-close aria-label="閉じる">{% include 'schedule/icons/close.html' %}</button>
+    </div>
+    <form id="mail-modal-form" novalidate>
+        <div class="form-group">
+            <label for="mail-modal-reply-to">返信用メールアドレス（必須）</label>
+            <input type="email" id="mail-modal-reply-to" maxlength="254" placeholder="例：yourname@example.com" required>
+            <p class="note">参加者がメールの「返信」を押すと、このアドレス宛てになります。</p>
+            <ul class="errorlist" id="mail-modal-error" hidden><li>返信用メールアドレスを正しく入力してください。</li></ul>
+        </div>
+        <div class="button-group">
+            <button type="submit">送る設定にする</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- 説明書をアップロードするモーダル -->
+<dialog class="modal" id="manual-modal" aria-labelledby="manual-modal-title">
+    <div class="modal__head">
+        <h3 id="manual-modal-title">説明書を添付する</h3>
+        <button type="button" class="modal__close" data-close aria-label="閉じる">{% include 'schedule/icons/close.html' %}</button>
+    </div>
+    <form id="manual-form" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="manual">
+        <div class="form-group">
+            <label for="id_manual">説明書のファイル（必須）</label>
+            <input type="file" name="manual" id="id_manual" accept=".pdf,.png,.jpg,.jpeg">
+            <p class="note">PDF・PNG・JPEG（10MBまで）</p>
+        </div>
+        <div class="button-group">
+            <button type="submit">アップロードする</button>
+        </div>
+    </form>
+</dialog>
 <div class="save-status" id="save-status" role="status" aria-live="polite"></div>
 {% endblock %}
 
@@ -493,9 +581,8 @@
         });
     }
 
-    async function save(form, withFile) {
+    async function save(form) {
         const data = new FormData(form);
-        if (!withFile) data.delete('manual');
         form.saveCount = (form.saveCount || 0) + 1;
         const count = form.saveCount;
         try {
@@ -503,7 +590,7 @@
                 method: 'POST',
                 headers: { 'X-Requested-With': 'fetch' },
                 body: data,
-                keepalive: !withFile,  // 入力の途中でページを移っても保存を終わらせる
+                keepalive: true,  // 入力の途中でページを移っても保存を終わらせる
             });
             const result = await response.json();
             if (count !== form.saveCount) return;  // あとから送った保存の結果を優先する
@@ -513,7 +600,6 @@
                 return;
             }
             showSaveStatus('保存しました');
-            if (result.reload) location.reload();
             if (result.starts) {
                 // 募集期間などを変えたら、カレンダーを新しい設定で読みなおす
                 weekStarts.splice(0, weekStarts.length, ...result.starts);
@@ -531,13 +617,155 @@
         form.addEventListener('input', (event) => {
             if (!event.target.matches('input[type="text"], input[type="email"], input[type="url"], textarea')) return;
             clearTimeout(typingTimer);
-            typingTimer = setTimeout(() => save(form, false), 800);
+            typingTimer = setTimeout(() => save(form), 800);
         });
         form.addEventListener('change', (event) => {
+            if (event.target.hasAttribute('data-no-autosave')) return;
             clearTimeout(typingTimer);
-            save(form, event.target.type === 'file');
+            save(form);
         });
     });
+
+    // ---- モーダル（×・外側の暗いところを押したら閉じる） ----
+    document.querySelectorAll('dialog.modal').forEach((dialog) => {
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog || event.target.closest('[data-close]')) dialog.close();
+        });
+    });
+
+    // ---- 予約確認メール：オンにするときは、モーダルで返信用メールアドレスを入れてもらう ----
+    const settingsForm = document.getElementById('settings-form');
+    const mailEnabled = document.getElementById('id_mail_enabled');
+    const mailDetail = document.getElementById('mail-detail');
+    const mailModal = document.getElementById('mail-modal');
+    const mailModalInput = document.getElementById('mail-modal-reply-to');
+    const mailModalError = document.getElementById('mail-modal-error');
+
+    mailEnabled.addEventListener('click', (event) => {
+        if (!mailEnabled.checked) return;  // オフにするときはそのまま保存する
+        event.preventDefault();             // チェックはモーダルで「送る設定にする」を押してから入れる
+        mailModalInput.value = document.getElementById('id_mail_reply_to').value;
+        mailModalError.hidden = true;
+        mailModal.showModal();
+        mailModalInput.focus();
+    });
+    mailEnabled.addEventListener('change', () => {
+        mailDetail.disabled = !mailEnabled.checked;  // 保存（フォーム全体のchange）より先に切り替える
+    });
+    document.getElementById('mail-modal-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const value = mailModalInput.value.trim();
+        if (!value || !mailModalInput.checkValidity()) {
+            mailModalError.hidden = false;
+            mailModalInput.focus();
+            return;
+        }
+        document.getElementById('id_mail_reply_to').value = value;
+        // メールを送るにはメールアドレスを取得する必要がある
+        const useMail = document.getElementById('id_use_mail');
+        if (useMail) useMail.checked = true;
+        mailEnabled.checked = true;
+        mailDetail.disabled = false;
+        mailModal.close();
+        refreshHighlights();
+        save(settingsForm);
+    });
+
+    // ---- 説明書：添付するときはモーダルでアップロード、チェックを外すと削除 ----
+    const manualEnabled = document.getElementById('manual-enabled');
+    const manualModal = document.getElementById('manual-modal');
+    const manualForm = document.getElementById('manual-form');
+
+    function openManualModal() {
+        manualForm.reset();
+        manualForm.querySelectorAll('.errorlist').forEach((el) => el.remove());
+        manualModal.showModal();
+    }
+    manualEnabled.addEventListener('click', async (event) => {
+        event.preventDefault();  // 表示はアップロード・削除が終わってから（画面の読みなおしで）変わる
+        if (manualEnabled.checked) {
+            openManualModal();
+            return;
+        }
+        if (!confirm('添付している説明書を削除しますか？')) return;
+        const body = new FormData();
+        body.append('action', 'manual_clear');
+        body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        const response = await fetch(location.pathname, { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body });
+        if (response.ok) location.reload();
+        else showSaveStatus('削除できませんでした。', true);
+    });
+    const manualReplace = document.getElementById('manual-replace');
+    if (manualReplace) manualReplace.addEventListener('click', openManualModal);
+    manualForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = manualForm.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+            const response = await fetch(location.pathname, {
+                method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: new FormData(manualForm),
+            });
+            const result = await response.json();
+            if (result.ok) {
+                location.reload();
+                return;
+            }
+            showErrors(manualForm, result.errors);
+        } catch (error) {
+            showErrors(manualForm, { manual: ['アップロードできませんでした。通信状態を確かめてください。'] });
+        }
+        button.disabled = false;
+    });
+
+    // ---- 置き換わる文字（{日時} {氏名} など）を入力欄の中で目立たせる ----
+    const PLACEHOLDERS = {{ placeholders|safe }};
+    const highlighters = [];
+
+    function escapeHtml(text) {
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function setupHighlight(field) {
+        const words = field.dataset.placeholders ? JSON.parse(field.dataset.placeholders) : PLACEHOLDERS;
+        const pattern = new RegExp('(' + words.map((w) => w.replace(/[{}]/g, '\\$&')).join('|') + ')', 'g');
+        const wrap = document.createElement('div');
+        wrap.className = 'hl-wrap' + (field.tagName === 'INPUT' ? ' hl-wrap--input' : '');
+        const backdrop = document.createElement('div');
+        backdrop.className = 'hl-backdrop';
+        backdrop.setAttribute('aria-hidden', 'true');
+        field.parentNode.insertBefore(wrap, field);
+        wrap.append(backdrop, field);
+        // 文字の大きさ・間隔を入力欄とそろえる（入力欄はページの letter-spacing を引き継がないため）
+        const style = getComputedStyle(field);
+        ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'wordSpacing', 'lineHeight',
+         'paddingTop', 'paddingLeft', 'paddingBottom', 'tabSize'].forEach((key) => { backdrop.style[key] = style[key]; });
+        const padRight = parseFloat(style.paddingRight);
+
+        function update() {
+            // 最後が改行のとき、その行の高さぶんを描くために空白を足す
+            backdrop.innerHTML = escapeHtml(field.value).replace(pattern, '<mark>$1</mark>') + (field.value.endsWith('\n') ? ' ' : '');
+            // 入力欄にスクロールバーが出たときも、折り返しの位置をそろえる
+            const scrollbar = field.offsetWidth - field.clientWidth - 4;
+            backdrop.style.paddingRight = (padRight + Math.max(0, scrollbar)) + 'px';
+            backdrop.scrollTop = field.scrollTop;
+            backdrop.scrollLeft = field.scrollLeft;
+        }
+        field.addEventListener('input', update);
+        const sync = () => {
+            backdrop.scrollTop = field.scrollTop;
+            backdrop.scrollLeft = field.scrollLeft;
+        };
+        ['scroll', 'keyup', 'click', 'focus', 'blur'].forEach((name) => field.addEventListener(name, sync));
+        new ResizeObserver(update).observe(field);
+        highlighters.push(update);
+        update();
+    }
+
+    function refreshHighlights() {
+        highlighters.forEach((update) => update());
+    }
+
+    document.querySelectorAll('.highlight').forEach(setupHighlight);
 
     // 所要時間から、使用する時間枠の数（30分ごとに切り上げ）を出す
     function updateSlotCount() {

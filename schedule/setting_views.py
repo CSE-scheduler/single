@@ -16,7 +16,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .calendar import admin_week, admin_week_starts, toggleable
-from .forms import CLOSE_CHOICES, TIME_CHOICES, TITLE_FIELDS, NewProjectForm, PeriodForm, ProjectForm
+from .forms import CLOSE_CHOICES, TIME_CHOICES, TITLE_FIELDS, ManualForm, NewProjectForm, PeriodForm, ProjectForm
+from .mail import PLACEHOLDERS
 from .models import PROJECT_NAME_SYMBOLS, RESERVATION_STATUSES, Project, Reservation, Slot
 
 SESSION_KEY = 'schedule_admin'
@@ -118,14 +119,24 @@ def project_edit(request, project):
         messages.error(request, '入力に誤りがあります。')
         project = Project.objects.get(pk=project.pk)
         form = ProjectForm(instance=project)
+    elif request.method == 'POST' and request.POST.get('action') == 'manual':
+        # 説明書のアップロード（モーダルから）。表示を新しくするため、保存したら画面を読みなおす
+        manual_form = ManualForm(request.POST, request.FILES)
+        if not manual_form.is_valid():
+            return JsonResponse({'ok': False, 'errors': _errors(manual_form)})
+        manual_form.save(project)
+        return JsonResponse({'ok': True, 'reload': True})
+    elif request.method == 'POST' and request.POST.get('action') == 'manual_clear':
+        project.manual_data = None
+        project.manual_name = project.manual_type = ''
+        project.save(update_fields=['manual_data', 'manual_name', 'manual_type'])
+        return JsonResponse({'ok': True, 'reload': True})
     elif request.method == 'POST':
-        form = ProjectForm(request.POST, request.FILES, instance=project)
+        form = ProjectForm(request.POST, instance=project)
         if form.is_valid():
-            manual_changed = bool(form.cleaned_data.get('manual') or form.cleaned_data.get('manual_clear'))
             project = form.save()
             if autosave:
-                # 説明書を変えたときは、表示（今の説明書の名前）を新しくするために画面を読みなおす
-                return JsonResponse({'ok': True, 'reload': manual_changed})
+                return JsonResponse({'ok': True})
             messages.success(request, '保存しました。')
             return redirect('setting_project', project.name)
         if autosave:
@@ -158,6 +169,7 @@ def project_edit(request, project):
         'participant_url': request.build_absolute_uri(reverse('consent', args=[stored.name])),
         # local_settings.py に送信用のGmailを書いていないと、メールは送られない
         'mail_ready': bool(settings.EMAIL_HOST_PASSWORD),
+        'placeholders': PLACEHOLDERS,
     })
 
 

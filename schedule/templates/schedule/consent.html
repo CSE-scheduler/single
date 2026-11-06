@@ -15,7 +15,10 @@
 {% endblock %}
 
 {% block content %}
-<div class="main_text">{{ project.consent_html }}</div>
+<div class="main_text">
+    {% if project.consent_title %}<h2>{{ project.consent_title }}</h2>{% endif %}
+    {{ project.consent_html }}
+</div>
 <div class="button_row">
     {% if project.manual_data %}
     <a href="{% url 'manual' project.name %}" target="_blank" rel="noopener" class="button" onclick="enableNext()">説明書を読む</a>

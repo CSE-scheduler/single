@@ -343,7 +343,6 @@ class SettingTests(TestCase):
             'name': 'exp2b', 'consent_text': '同意してください', 'complete_text': '完了',
             'complete_button_text': '戻る', 'complete_button_url': 'https://example.com',
             'use_full_name': 'on', 'use_extra1': 'on', 'title_extra1': '所属',
-            'manual': SimpleUploadedFile('manual.pdf', b'%PDF-1.4', content_type='application/pdf'),
         }
         response = self.client.post(reverse('setting_project', args=['exp2']), data)
         # プロジェクト名は変えられない（name を送っても無視する）
@@ -352,8 +351,22 @@ class SettingTests(TestCase):
         self.assertEqual(project.name, 'exp2')
         self.assertNotContains(self.client.get(reverse('setting_project', args=['exp2'])), 'name="name"')
         self.assertFalse(project.use_mail)
-        self.assertEqual(bytes(project.manual_data), b'%PDF-1.4')
         self.assertEqual([f['title'] for f in project.fields()], ['氏名', '所属'])
+
+        # 説明書はモーダルからアップロードし、チェックを外すと削除する
+        fetch = {'HTTP_X_REQUESTED_WITH': 'fetch'}
+        url = reverse('setting_project', args=['exp2'])
+        bad = self.client.post(url, {'action': 'manual', 'manual': SimpleUploadedFile('a.txt', b'x')}, **fetch).json()
+        self.assertFalse(bad['ok'])
+        self.assertIn('PDF', bad['errors']['manual'][0])
+        self.assertFalse(self.client.post(url, {'action': 'manual'}, **fetch).json()['ok'])
+        self.client.post(url, {'action': 'manual', 'manual': SimpleUploadedFile('manual.pdf', b'%PDF-1.4')}, **fetch)
+        project.refresh_from_db()
+        self.assertEqual(bytes(project.manual_data), b'%PDF-1.4')
+        self.assertEqual(project.manual_name, 'manual.pdf')
+        self.client.post(url, {'action': 'manual_clear'}, **fetch)
+        project.refresh_from_db()
+        self.assertIsNone(project.manual_data)
 
         # その他を取得するのに項目名がない、ボタンの遷移先が javascript: は保存しない
         bad = self.client.post(reverse('setting_project', args=['exp2']), {
@@ -418,7 +431,7 @@ class SettingTests(TestCase):
         self.assertEqual(project.duration, 40)
         # 文言などの設定も自動保存
         response = self.client.post(url, {'action': 'settings', 'consent_text': 'こんにちは', 'use_mail': 'on'}, **fetch)
-        self.assertEqual(response.json(), {'ok': True, 'reload': False})
+        self.assertEqual(response.json(), {'ok': True})
         project.refresh_from_db()
         self.assertEqual(project.consent_text, 'こんにちは')
         page = self.client.get(url)
@@ -551,9 +564,33 @@ class MailTests(TestCase):
         self.assertEqual(message.subject, slot.label(with_year=True) + 'のご予約')
         self.assertIn('山田太郎 様', message.body)
         self.assertIn('https://example.com/zoom', message.body)
+        # 「予約メールを自分も受け取る」（初期値オン）なら、返信用メールアドレスにもBCCで送る
+        self.assertEqual(message.bcc, ['lab@example.com'])
         # 二度押ししても2通目は送らない
         self.client.post(reverse('confirm', args=['mailexp']), data)
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_no_bcc_when_off(self):
+        self.project.mail_bcc_self = False
+        self.project.save()
+        slot = tomorrow_slot(self.project)
+        self.client.post(reverse('confirm', args=['mailexp']), {'slot': slot.pk, 'full_name': 'x', 'mail': 'a@example.com'})
+        self.assertEqual(mail.outbox[0].bcc, [])
+
+    def test_cancel_mail(self):
+        self.project.mail_cancel_subject = 'キャンセル：{日時}'
+        self.project.mail_cancel_body = '{氏名} 様\n{日時} のご予約をキャンセルしました。'
+        self.project.save()
+        slot = Slot.objects.get(project=self.project, start=datetime.datetime.combine(
+            datetime.date.today() + datetime.timedelta(days=2), datetime.time(10)))
+        r = Reservation.objects.create(slot=slot, full_name='山田', mail='a@example.com')
+        self.client.post(reverse('cancel', args=['mailexp', r.token]))
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.subject, 'キャンセル：' + slot.label(with_year=True))
+        self.assertIn('山田 様', message.body)
+        self.assertEqual(message.bcc, ['lab@example.com'])
+        self.assertEqual(message.reply_to, ['lab@example.com'])
 
     def test_no_reply_to_when_empty(self):
         self.project.mail_reply_to = ''
@@ -603,14 +640,34 @@ class MailSettingTests(TestCase):
         })
         self.assertEqual(response.status_code, 200)
 
+        # 返信用メールアドレスは必須
+        response = self.client.post(reverse('setting_project', args=['m1']), {
+            'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on',
+            'mail_subject': 's', 'mail_body': 'b', 'mail_cancel_subject': 'c', 'mail_cancel_body': 'd',
+        })
+        self.assertContains(response, '返信用メールアドレスを入力してください')
+
         response = self.client.post(reverse('setting_project', args=['m1']), {
             'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on', 'mail_reply_to': 'me@example.com',
-            'mail_subject': 's', 'mail_body': 'b',
+            'mail_subject': 's', 'mail_body': 'b', 'mail_cancel_subject': 'c', 'mail_cancel_body': 'd',
         })
         self.assertRedirects(response, reverse('setting_project', args=['m1']))
         project.refresh_from_db()
         self.assertTrue(project.mail_enabled)
         self.assertEqual(project.mail_reply_to, 'me@example.com')
+        self.assertEqual((project.mail_cancel_subject, project.mail_cancel_body), ('c', 'd'))
+        self.assertFalse(project.mail_bcc_self)  # チェックを外して送った
+
+    def test_mail_fields_kept_while_disabled(self):
+        # 確認メールを送らないあいだは、メールの欄は入力できない（送られてこない）ので、今の値のままにする
+        login(self.client)
+        project = Project.objects.create(name='m2', mail_reply_to='me@example.com', mail_subject='件名')
+        response = self.client.post(reverse('setting_project', args=['m2']), {'use_mail': 'on', 'use_full_name': 'on'})
+        self.assertRedirects(response, reverse('setting_project', args=['m2']))
+        project.refresh_from_db()
+        self.assertFalse(project.mail_enabled)
+        self.assertEqual((project.mail_reply_to, project.mail_subject), ('me@example.com', '件名'))
+        self.assertTrue(project.mail_bcc_self)
 
 
 class ManageReservationTests(TestCase):
@@ -670,3 +727,51 @@ class ManageReservationTests(TestCase):
         self.assertContains(page, '変更・キャンセルできません')
         self.client.post(reverse('cancel', args=['mng', past.token]))
         self.assertTrue(Reservation.objects.filter(pk=past.pk).exists())
+
+
+class PageTextTests(TestCase):
+    """最初の画面・予約完了画面の、ページタイトル（h2）と本文（1行ずつ <p>）"""
+
+    def test_paragraphs(self):
+        project = Project.objects.create(
+            name='txt', consent_title='ご協力のお願い',
+            consent_text='1行目\r\n<a href="example.com">あああ</a>を読んでください\n\nhttps://example.com/x を見てください\n<ul><li>項目</li></ul>',
+        )
+        html = project.consent_html()
+        self.assertIn('<p>1行目</p>', html)
+        self.assertIn('<p><a href="https://example.com">あああ</a>を読んでください</p>', html)
+        self.assertIn('<br>', html)
+        self.assertIn('<a href="https://example.com/x" target="_blank" rel="noopener">https://example.com/x</a>', html)
+        self.assertIn('\n<ul><li>項目</li></ul>', html)
+        project.ensure_slots()
+        page = self.client.get(reverse('consent', args=['txt']))
+        self.assertContains(page, '<h2>ご協力のお願い</h2>')
+
+    def test_links_keep_scheme(self):
+        project = Project(consent_text='<a href="https://a.com">a</a> <a href="/x">x</a> <a href="mailto:m@a.com">m</a>')
+        html = project.consent_html()
+        self.assertIn('href="https://a.com"', html)
+        self.assertIn('href="/x"', html)
+        self.assertIn('href="mailto:m@a.com"', html)
+        self.assertNotIn('https://https', html)
+
+    def test_complete_title(self):
+        project = Project.objects.create(name='c', complete_title='{日時} 予約完了', complete_text='{日時} です')
+        project.ensure_slots()
+        slot = tomorrow_slot(project)
+        self.client.post(reverse('confirm', args=['c']), {'slot': slot.pk, 'full_name': 'x', 'mail': 'a@example.com'})
+        page = self.client.get(reverse('complete', args=['c']))
+        self.assertContains(page, f'<h2>{slot.label(with_year=True)} 予約完了</h2>')
+        self.assertContains(page, f'<p>{slot.label(with_year=True)} です</p>')
+
+    def test_data_reuse_question(self):
+        project = Project(use_data_reuse=True)
+        field = [f for f in project.fields() if f['key'] == 'data_reuse'][0]
+        self.assertEqual(field['title'], '関連研究でデータを再利用してもよろしいですか？（同意は任意です）')
+        self.assertEqual(field['header'], 'データ再利用の許可')
+
+    def test_old_text_split(self):
+        import importlib
+        migration = importlib.import_module('schedule.migrations.0007_titles_cancel_mail_bcc')
+        title, body = migration.split('<h2>見出し</h2>\n<p>1行目</p>\n<p>2行目</p>')
+        self.assertEqual((title, body), ('見出し', '1行目\n2行目'))

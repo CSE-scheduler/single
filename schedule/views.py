@@ -11,7 +11,7 @@ from django.views.decorators.cache import never_cache
 
 from .calendar import can_book, user_week, user_week_starts
 from .forms import reservation_form, reservation_values
-from .mail import send_confirmation
+from .mail import send_cancel, send_confirmation
 from .models import Project, Reservation, Slot
 
 
@@ -173,9 +173,11 @@ def complete(request, project):
     ).select_related('slot').first()
     if reservation is None:
         return redirect('consent', project.name)
+    date = reservation.label(with_year=True)
     return render(request, 'schedule/complete.html', {
         'project': project,
-        'text': project.complete_html(reservation.label(with_year=True)),
+        'title': project.complete_title_text(date),
+        'text': project.complete_html(date),
     })
 
 
@@ -249,6 +251,7 @@ def cancel(request, project, token):
     if request.method != 'POST' or not _editable(reservation):
         return redirect('manage', project.name, token)
     label = reservation.label(with_year=True)
+    send_cancel(reservation)
     reservation.delete()
     return render(request, 'schedule/message.html', {
         'project': project, 'title': '予約をキャンセルしました',

@@ -98,16 +98,18 @@ class PeriodForm(forms.ModelForm):
         return cleaned
 
 
-class ProjectForm(forms.ModelForm):
-    manual = forms.FileField(required=False)
-    manual_clear = forms.BooleanField(required=False)
+# 「確認メールを送る」をオンにするまで入力できない欄（送られてこないので、今の値のままにする）
+MAIL_FIELDS = ['mail_reply_to', 'mail_bcc_self', 'mail_subject', 'mail_body', 'mail_cancel_subject', 'mail_cancel_body']
 
+
+class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = [
-            'consent_text', 'complete_text', 'complete_button_text', 'complete_button_url',
+            'consent_title', 'consent_text', 'complete_title', 'complete_text',
+            'complete_button_text', 'complete_button_url',
             *USE_FIELDS, *TITLE_FIELDS,
-            'mail_enabled', 'mail_subject', 'mail_reply_to', 'mail_body',
+            'mail_enabled', *MAIL_FIELDS,
         ]
 
     def clean_complete_button_url(self):
@@ -115,17 +117,6 @@ class ProjectForm(forms.ModelForm):
         if url and not url.startswith(('http://', 'https://', '/')):
             raise forms.ValidationError('遷移先は http:// か https:// で始まるURLを入力してください。')
         return url
-
-    def clean_manual(self):
-        manual = self.cleaned_data.get('manual')
-        if not manual:
-            return None
-        ext = os.path.splitext(manual.name)[1].lower()
-        if ext not in MANUAL_TYPES:
-            raise forms.ValidationError('説明書は PDF・PNG・JPEG のファイルをアップロードしてください。')
-        if manual.size > MANUAL_MAX_BYTES:
-            raise forms.ValidationError(f'説明書のファイルは {MANUAL_MAX_BYTES // 1024 // 1024}MB 以下にしてください。')
-        return manual
 
     def clean(self):
         cleaned = super().clean()
@@ -139,24 +130,38 @@ class ProjectForm(forms.ModelForm):
         if cleaned.get('mail_enabled'):
             if not cleaned.get('use_mail'):
                 self.add_error('mail_enabled', '確認メールを送るときは、「メールアドレス」を「取得する」にしてください。')
+            if 'mail_reply_to' not in self.errors and not cleaned.get('mail_reply_to'):
+                self.add_error('mail_reply_to', '返信用メールアドレスを入力してください。')
             if not cleaned.get('mail_subject', '').strip() or not cleaned.get('mail_body', '').strip():
-                self.add_error('mail_body', '件名と本文を入力してください。')
+                self.add_error('mail_body', '確認メールのタイトルと本文を入力してください。')
+            if not cleaned.get('mail_cancel_subject', '').strip() or not cleaned.get('mail_cancel_body', '').strip():
+                self.add_error('mail_cancel_body', 'キャンセルのメールのタイトルと本文を入力してください。')
+        else:
+            for name in MAIL_FIELDS:
+                self.errors.pop(name, None)
+                cleaned[name] = getattr(self.instance, name)
         return cleaned
 
-    def save(self, commit=True):
-        project = super().save(commit=False)
-        manual = self.cleaned_data.get('manual')
-        if manual:
-            project.manual_data = manual.read()
-            project.manual_name = os.path.basename(manual.name)
-            project.manual_type = MANUAL_TYPES[os.path.splitext(manual.name)[1].lower()]
-        elif self.cleaned_data.get('manual_clear'):
-            project.manual_data = None
-            project.manual_name = ''
-            project.manual_type = ''
-        if commit:
-            project.save()
-        return project
+
+class ManualForm(forms.Form):
+    """説明書のアップロード（モーダルから送る）"""
+    manual = forms.FileField(error_messages={'required': '説明書のファイルを選んでください。'})
+
+    def clean_manual(self):
+        manual = self.cleaned_data['manual']
+        ext = os.path.splitext(manual.name)[1].lower()
+        if ext not in MANUAL_TYPES:
+            raise forms.ValidationError('説明書は PDF・PNG・JPEG のファイルをアップロードしてください。')
+        if manual.size > MANUAL_MAX_BYTES:
+            raise forms.ValidationError(f'説明書のファイルは {MANUAL_MAX_BYTES // 1024 // 1024}MB 以下にしてください。')
+        return manual
+
+    def save(self, project):
+        manual = self.cleaned_data['manual']
+        project.manual_data = manual.read()
+        project.manual_name = os.path.basename(manual.name)
+        project.manual_type = MANUAL_TYPES[os.path.splitext(manual.name)[1].lower()]
+        project.save(update_fields=['manual_data', 'manual_name', 'manual_type'])
 
 
 YES_NO = [('yes', 'はい'), ('no', 'いいえ')]
