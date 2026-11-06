@@ -34,6 +34,16 @@
         word-break: break-all;
     }
 
+    /* 行のどこを押してもプロジェクトの編集画面を開く */
+    .row-link {
+        cursor: pointer;
+    }
+
+    .row-link:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: -2px;
+    }
+
     .unpaid {
         color: var(--secondary);
         font-weight: var(--weight-bold);
@@ -70,14 +80,13 @@
             </thead>
             <tbody>
                 {% for project in projects %}
-                <tr>
-                    <td><a class="project-name" href="{% url 'setting_project' project.name %}">{{ project.name }}</a></td>
+                <tr class="row-link" data-href="{% url 'setting_project' project.name %}" tabindex="0">
+                    <td><span class="project-name">{{ project.name }}</span></td>
                     <td class="right">{{ project.n_reservations }}</td>
                     <td class="right">{{ project.n_upcoming }}</td>
                     <td class="right">{% if project.n_unpaid %}<span class="unpaid">{{ project.n_unpaid }}</span>{% else %}0{% endif %}</td>
                     <td><a href="{% url 'consent' project.name %}" target="_blank" rel="noopener">開く</a></td>
                     <td class="right">
-                        <a class="button button--sub button--small" href="{% url 'setting_project' project.name %}">編集</a>
                         <form class="inline-form" method="post" onsubmit="return confirm('プロジェクト「{{ project.name|escapejs }}」を削除します。予約（{{ project.n_reservations }}件）もすべて消え、元に戻せません。よろしいですか？')">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="delete">
@@ -93,4 +102,20 @@
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block script %}
+<script>
+    // 行を押すと編集画面へ（「開く」のリンクと削除ボタンを押したときは除く）
+    document.querySelectorAll('.row-link').forEach((row) => {
+        const open = () => { window.location.href = row.dataset.href; };
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('a, button, form')) return;
+            open();
+        });
+        row.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && event.target === row) open();
+        });
+    });
+</script>
 {% endblock %}
