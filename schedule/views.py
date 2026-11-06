@@ -6,6 +6,7 @@ from urllib.parse import quote
 from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.cache import never_cache
 
 from .calendar import can_book, user_week, user_week_starts
 from .forms import reservation_form, reservation_values
@@ -37,6 +38,8 @@ def manual(request, project):
     return response
 
 
+# 日時選択と入力の画面はブラウザに保存させない（「戻る」でも最新の空き状況を出す）
+@never_cache
 def timeframe(request, project):
     project = _project(project)
     starts = user_week_starts(project)
@@ -56,6 +59,7 @@ def timeframe(request, project):
     return render(request, 'schedule/timeframe.html', params)
 
 
+@never_cache
 def week(request, project):
     """日時選択で「前の週・次の週」を押したときに読み込む1週間分の表"""
     project = get_object_or_404(Project, name=project)
@@ -75,11 +79,16 @@ def _get_slot(project, slot_id):
         return None
 
 
+@never_cache
 def entry(request, project, form=None):
     project = _project(project)
     slot = _get_slot(project, request.POST.get('slot') or request.GET.get('slot'))
     if slot is None:
         return redirect('timeframe', project.name)
+    if not can_book(project, slot):
+        # 日時選択の画面を開いたあとに、枠が閉じられたり予約が入ったりしたとき
+        return _message(request, project, '申し訳ございません',
+                        'この日時は予約できなくなりました。お手数ですが、日時を選択しなおしてください。')
     if form is None:
         form = reservation_form(project)
     return render(request, 'schedule/entry.html', {

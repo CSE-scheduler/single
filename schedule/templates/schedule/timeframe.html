@@ -152,8 +152,15 @@
 
     function showSelected() {
         const checked = document.querySelector('input[name="slot"]:checked');
-        if (!checked) return;
         const area = document.getElementById('selected-date');
+        if (!checked) {
+            // 選んでいた枠が選べなくなったとき
+            area.textContent = 'ご希望の日時を選択してください';
+            area.classList.add('selected-date--empty');
+            document.getElementById('submit').disabled = true;
+            mark('span-selected', null);
+            return;
+        }
         area.textContent = checked.dataset.label;
         area.classList.remove('selected-date--empty');
         document.getElementById('submit').disabled = false;
@@ -169,6 +176,10 @@
         mark('span-hover', td && td.querySelector('input[name="slot"]') ? td : null);
     });
     weekArea.addEventListener('mouseleave', () => mark('span-hover', null));
+
+    function onWeeksRefreshed() {
+        showSelected();
+    }
 
     showWeek(current);
     showSelected();

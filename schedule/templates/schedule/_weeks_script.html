@@ -52,4 +52,37 @@
             if (i >= 0 && i < weekStarts.length) loadWeek(i).catch(() => {});
         });
     }
+
+    // 画面に戻ってきたとき（タブの切り替え・「戻る」など）は、読み込んである週を最新の状態に読みなおす
+    // （画面を開いたあとに枠が閉じられたり、予約が入ったりしていることがあるため）
+    async function refreshWeeks() {
+        const checked = document.querySelector('input[name="slot"]:checked');
+        const checkedValue = checked ? checked.value : null;
+        await Promise.all(Object.entries(weekEls).map(async ([start, old]) => {
+            try {
+                const response = await fetch(weekArea.dataset.url + '?start=' + start, { headers: { 'X-Requested-With': 'fetch' } });
+                if (!response.ok) return;
+                const template = document.createElement('template');
+                template.innerHTML = (await response.text()).trim();
+                const el = template.content.firstElementChild;
+                el.hidden = old.hidden;
+                old.replaceWith(el);
+                weekEls[start] = el;
+            } catch (error) {
+                // 読みなおせなかったときは、今の表示のままにする（申し込みのときにもう一度確かめる）
+            }
+        }));
+        if (checkedValue) {
+            const input = weekArea.querySelector(`input[name="slot"][value="${checkedValue}"]`);
+            if (input) input.checked = true;
+        }
+        if (typeof onWeeksRefreshed === 'function') onWeeksRefreshed();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshWeeks();
+    });
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) refreshWeeks();
+    });
 </script>

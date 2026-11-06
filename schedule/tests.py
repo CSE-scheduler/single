@@ -129,6 +129,18 @@ class DurationBufferTests(TestCase):
                                             {'slot': self.slot(10, 30).pk, 'full_name': 'y', 'mail': 'b@example.com'})
         self.assertContains(response, '申し訳ございません')
 
+    def test_entry_rechecks_slot(self):
+        # 日時選択の画面を開いたあとに、後ろの枠が閉じられたとき
+        page = self.client.get(reverse('timeframe', args=['dur']))
+        self.assertContains(page, f'value="{self.slot(20).pk}"')
+        self.assertEqual(page['Cache-Control'].count('no-store'), 1)
+        closed = self.slot(20, 30)
+        closed.closed = True
+        closed.save()
+        response = self.client.post(reverse('entry', args=['dur']), {'slot': self.slot(20).pk})
+        self.assertContains(response, 'この日時は予約できなくなりました')
+        self.assertNotContains(self.client.get(reverse('timeframe', args=['dur'])), f'value="{self.slot(20).pk}"')
+
     def test_user_page_shows_duration(self):
         page = self.client.get(reverse('timeframe', args=['dur']))
         self.assertContains(page, '所要時間：1時間')

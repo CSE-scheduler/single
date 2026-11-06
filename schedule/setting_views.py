@@ -12,6 +12,7 @@ from django.http import Http404, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .calendar import admin_week, admin_week_starts, toggleable
@@ -140,6 +141,7 @@ def project_edit(request, project):
 
 
 @admin_required
+@never_cache
 def week(request, project):
     """カレンダーで「前の週・次の週」を押したときに読み込む1週間分の表"""
     project = get_object_or_404(Project, name=project)
