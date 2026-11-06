@@ -1,6 +1,56 @@
 {% extends 'schedule/base.html' %}
 
 {% block style %}
+    /* 表が長くても「入力画面へ」のボタンまで1画面に収まるように、表の部分だけをスクロールさせる */
+    .container {
+        height: 100dvh;
+        min-height: 0;
+        padding: 16px;
+    }
+
+    .main_text {
+        display: flex;
+        flex-direction: column;
+        max-height: 100%;
+        min-height: 0;
+        padding: 24px 40px;
+    }
+
+    @media (max-width: 768px) {
+        .main_text {
+            padding: 16px;
+        }
+    }
+
+    .main_text h2 {
+        margin-bottom: 4px;
+    }
+
+    .duration {
+        margin-bottom: 12px;
+        color: var(--gray-dark);
+    }
+
+    .timeframe-form {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    #week-area {
+        display: flex;
+        flex-direction: column;
+        flex: 0 1 auto;
+        min-height: 0;
+    }
+
+    #week-area .week {
+        flex: 0 1 auto;
+        min-height: 0;
+        max-height: none;
+    }
+
     /* 予約できる枠（◯）。main.cssのラジオボタンの見た目を、表のマス用に上書きする */
     .grid input[type="radio"] + label {
         display: block;
@@ -11,21 +61,34 @@
         cursor: pointer;
     }
 
-    .grid input[type="radio"] + label:hover {
+    /* マスにのせたとき・選んだときは、所要時間ぶんのマスに色を付ける */
+    .grid td.span-hover {
         background-color: var(--primary-selected);
     }
 
-    .grid input[type="radio"]:checked + label {
-        color: var(--white);
+    .grid td.span-selected {
         background-color: var(--primary);
+    }
+
+    .grid td.span-hover .mark, .grid td.span-selected .mark {
+        background-color: transparent;
+    }
+
+    .grid td.span-selected label, .grid td.span-selected .mark {
+        color: var(--white) !important;
     }
 
     .selected-area {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
-        padding-top: 24px;
+        gap: 4px;
+        padding-top: 12px;
+        flex: 0 0 auto;
+    }
+
+    .selected-area .button-group {
+        padding-top: 8px;
     }
 
     .selected-date {
@@ -42,17 +105,14 @@
 {% block content %}
 <div class="main_text">
     <h2>日時の選択</h2>
+    <p class="duration">所要時間：{{ project.duration_label }}</p>
 
     {% if week %}
-    <div class="legend">
-        <span><span class="mark mark--open">◯</span>予約できます</span>
-        <span><span class="mark mark--closed">×</span>予約できません</span>
-    </div>
-    <form method="post" action="{% url 'entry' project.name %}">
+    <form method="post" action="{% url 'entry' project.name %}" class="timeframe-form">
         {% csrf_token %}
         {% include 'schedule/_week_nav.html' %}
         {{ starts|json_script:"week-starts" }}
-        <div id="week-area" data-url="{% url 'week' project.name %}" data-index="{{ index }}">
+        <div id="week-area" data-url="{% url 'week' project.name %}" data-index="{{ index }}" data-span="{{ span }}">
             {% include 'schedule/_user_week.html' %}
         </div>
 
@@ -74,6 +134,22 @@
 {% if week %}
 {% include 'schedule/_weeks_script.html' %}
 <script>
+    const span = Number(weekArea.dataset.span);  // 所要時間ぶんのマスの数
+
+    // td から下へ所要時間ぶんのマス
+    function spanCells(td) {
+        const rows = td.closest('tbody').rows;
+        const start = td.closest('tr').sectionRowIndex;
+        const cells = [];
+        for (let i = start; i < Math.min(start + span, rows.length); i++) cells.push(rows[i].cells[td.cellIndex]);
+        return cells;
+    }
+
+    function mark(className, td) {
+        document.querySelectorAll('.' + className).forEach((cell) => cell.classList.remove(className));
+        if (td) spanCells(td).forEach((cell) => cell.classList.add(className));
+    }
+
     function showSelected() {
         const checked = document.querySelector('input[name="slot"]:checked');
         if (!checked) return;
@@ -81,12 +157,19 @@
         area.textContent = checked.dataset.label;
         area.classList.remove('selected-date--empty');
         document.getElementById('submit').disabled = false;
+        mark('span-selected', checked.closest('td'));
     }
 
-    // あとから読み込んだ週のマスでも選べるように、表全体で受け取る
+    // あとから読み込んだ週のマスでも動くように、表全体で受け取る
     weekArea.addEventListener('change', (event) => {
         if (event.target.name === 'slot') showSelected();
     });
+    weekArea.addEventListener('mouseover', (event) => {
+        const td = event.target.closest('td');
+        mark('span-hover', td && td.querySelector('input[name="slot"]') ? td : null);
+    });
+    weekArea.addEventListener('mouseleave', () => mark('span-hover', null));
+
     showWeek(current);
     showSelected();
 </script>

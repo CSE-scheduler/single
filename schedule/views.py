@@ -7,10 +7,10 @@ from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .calendar import user_week, user_week_starts
+from .calendar import can_book, user_week, user_week_starts
 from .forms import reservation_form, reservation_values
 from .mail import send_confirmation
-from .models import Project, Reservation, Slot
+from .models import SLOT_MINUTES, Project, Reservation, Slot
 
 
 def _project(name):
@@ -51,6 +51,7 @@ def timeframe(request, project):
         'starts': [d.isoformat() for d in starts],
         'index': index,
         'week': user_week(project, starts[index], selected) if starts else None,
+        'span': project.duration // SLOT_MINUTES,
     }
     return render(request, 'schedule/timeframe.html', params)
 
@@ -81,7 +82,9 @@ def entry(request, project, form=None):
         return redirect('timeframe', project.name)
     if form is None:
         form = reservation_form(project)
-    return render(request, 'schedule/entry.html', {'project': project, 'slot': slot, 'form': form})
+    return render(request, 'schedule/entry.html', {
+        'project': project, 'slot': slot, 'date': slot.label(project.duration), 'form': form,
+    })
 
 
 def _message(request, project, title, message):
@@ -107,15 +110,16 @@ def confirm(request, project):
                 slot = Slot.objects.select_for_update().get(project=project, pk=int(request.POST.get('slot', '')))
             except (Slot.DoesNotExist, ValueError):
                 return redirect('timeframe', project.name)
-            slot.project = project
+            # 所要時間ぶんの枠が重ならないよう、同じプロジェクトの申し込みを1つずつ処理する
+            Project.objects.select_for_update().get(pk=project.pk)
             existing = Reservation.objects.filter(slot=slot).first()
             # 申し込みボタンの二度押しや再読み込みは、同じ人の予約としてそのまま完了画面を出す
             if existing and existing.pk == request.session.get(key):
                 return redirect('complete', project.name)
-            if existing or not slot.bookable(datetime.datetime.now()):
+            if existing or not can_book(project, slot):
                 return _message(request, project, '申し訳ございません',
                                 'この日時は予約できなくなりました。お手数ですが、日時を選択しなおしてください。')
-            reservation = Reservation.objects.create(slot=slot, **reservation_values(form))
+            reservation = Reservation.objects.create(slot=slot, duration=project.duration, **reservation_values(form))
     except IntegrityError:
         # ロックが効かないデータベース（SQLite）で同時に申し込まれたとき
         return _message(request, project, '申し訳ございません',
@@ -136,5 +140,5 @@ def complete(request, project):
         return redirect('consent', project.name)
     return render(request, 'schedule/complete.html', {
         'project': project,
-        'text': project.complete_html(reservation.slot.label(with_year=True)),
+        'text': project.complete_html(reservation.label(with_year=True)),
     })

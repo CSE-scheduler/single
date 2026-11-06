@@ -1,4 +1,4 @@
-"""日時の表（参加者の日時選択と、設定画面のカレンダー）を1週間ずつ作る。
+"""日時の表（参加者の日時選択と、設定画面のカレンダー）と、枠が空いているかの判定。
 
 ページを開いたときは表示する週だけを作り、ほかの週は「前の週・次の週」を押したときに
 （views.week / setting_views.week から）読み込む。"""
@@ -8,10 +8,73 @@ import datetime
 import jpholiday
 from django.db.models import Min
 
-from .models import DAY_NAMES, TIME_OPTIONS
+from .models import DAY_NAMES, SLOT_MINUTES, TIME_OPTIONS, Reservation
 
 WEEK = datetime.timedelta(days=7)
+DAY = datetime.timedelta(days=1)
+SLOT = datetime.timedelta(minutes=SLOT_MINUTES)
 ALL_TIMES = TIME_OPTIONS[:-1]  # 枠の始まる時刻（8:00〜22:30）
+
+
+def _steps(start, end):
+    """start から end の手前まで、30分ごとの時刻"""
+    t = start
+    while t < end:
+        yield t
+        t += SLOT
+
+
+class Availability:
+    """first〜last（datetime）の範囲で、枠ごとの状態と、そこから予約できるかを判定する。
+
+    - 予約は所要時間ぶんの枠をふさぐ（occupied）
+    - 予約の前・後ろのバッファの枠も閉じる（blocked。予約でふさがった枠も含む）
+    - 新しい予約は、ふさぐ枠がどれも空いていて、そのバッファに他の予約が入っていないときだけできる
+    """
+
+    def __init__(self, project, first, last, now=None):
+        self.project = project
+        self.now = now or datetime.datetime.now()
+        self.cutoff = project.close_cutoff(self.now)
+        self.need = datetime.timedelta(minutes=project.duration)
+        # 範囲の外にある予約やバッファも影響するので、前後1日ぶん余分に読む
+        slots = project.slots.filter(start__gte=first - DAY, start__lt=last + DAY)
+        self.slots = {s.start: s for s in slots}
+        reservations = Reservation.objects.filter(
+            slot__project=project, slot__start__gte=first - DAY, slot__start__lt=last + DAY,
+        ).select_related('slot')
+        self.occupied = {}
+        self.blocked = set()
+        for r in reservations:
+            for t in _steps(r.start, r.end):
+                self.occupied[t] = r
+            for t in _steps(r.start - project.buffer_before, r.end + project.buffer_after):
+                self.blocked.add(t)
+
+    def free(self, t):
+        """この枠を新しい予約に使えるか（受付中・締め切り前・募集期間内・予約やバッファでふさがっていない）"""
+        slot = self.slots.get(t)
+        return (slot is not None and not slot.closed and t >= self.cutoff
+                and self.project.in_period(t) and t not in self.blocked)
+
+    def startable(self, t):
+        """この時刻から所要時間ぶん予約できるか"""
+        if not all(self.free(u) for u in _steps(t, t + self.need)):
+            return False
+        # 新しい予約のバッファに、他の予約が入っていないか
+        zone = _steps(t - self.project.buffer_before, t + self.need + self.project.buffer_after)
+        return not any(u in self.occupied for u in zone)
+
+    def admin_state(self, t):
+        """設定画面での表示。open：◯（受付中）、closed：×（受付停止）、reserved：予（予約あり）、
+        paid：済（謝金支払い済み）、none：-（締め切った枠・募集期間外・予約の前後で閉じた枠。切り替えられない）"""
+        r = self.occupied.get(t)
+        if r is not None:
+            return 'paid' if r.paid else 'reserved'
+        slot = self.slots.get(t)
+        if slot is None or t < self.cutoff or not self.project.in_period(t) or t in self.blocked:
+            return 'none'
+        return 'closed' if slot.closed else 'open'
 
 
 def _columns(first):
@@ -29,24 +92,16 @@ def _columns(first):
     return columns
 
 
-def _slots(project, first):
-    slots = project.slots.filter(
-        start__gte=datetime.datetime.combine(first, datetime.time()),
-        start__lt=datetime.datetime.combine(first + WEEK, datetime.time()),
-    ).select_related('reservation')
-    return {(s.start.date(), s.start.time()): s for s in slots}
-
-
-def _week(project, first, times, make_cell):
+def _week(project, first, times, make_cell, now):
+    start = datetime.datetime.combine(first, datetime.time())
+    availability = Availability(project, start, start + WEEK, now)
     columns = _columns(first)
-    by_key = _slots(project, first)
-    for slot in by_key.values():
-        slot.project = project  # 枠ごとにプロジェクトを読み直さないように
-    last = first + datetime.timedelta(days=6)
     rows = [
-        {'time': f'{t:%-H:%M}', 'cells': [make_cell(by_key.get((c['date'], t))) for c in columns]}
+        {'time': f'{t:%-H:%M}',
+         'cells': [make_cell(availability, datetime.datetime.combine(c['date'], t)) for c in columns]}
         for t in times
     ]
+    last = first + datetime.timedelta(days=6)
     return {
         'start': first.isoformat(),
         'title': f'{first.month}/{first.day}〜{last.month}/{last.day}',
@@ -71,15 +126,21 @@ def user_week_starts(project, today=None):
 
 
 def user_week(project, first, selected='', now=None):
-    now = now or datetime.datetime.now()
     times = [t for t in ALL_TIMES if project.time_start <= t < project.time_end]
 
-    def cell(slot):
-        if slot is None or not slot.bookable(now):
-            return None  # 予約できない枠は、理由にかかわらず「×」
-        return {'slot': slot, 'label': slot.label(), 'checked': str(slot.pk) == selected}
+    def cell(availability, t):
+        # 所要時間ぶん予約できる枠だけ◯にする。それ以外は理由にかかわらず「×」
+        if not availability.startable(t):
+            return None
+        slot = availability.slots[t]
+        return {'slot': slot, 'label': slot.label(project.duration), 'checked': str(slot.pk) == selected}
 
-    return _week(project, first, times, cell)
+    return _week(project, first, times, cell, now)
+
+
+def can_book(project, slot, now=None):
+    """この枠から予約できるか（申し込みのときに確かめる）"""
+    return Availability(project, slot.start, slot.start + DAY, now).startable(slot.start)
 
 
 # ---- 設定画面用 ----
@@ -104,11 +165,22 @@ def admin_week_starts(project, today=None):
 
 
 def admin_week(project, first, now=None):
-    now = now or datetime.datetime.now()
+    def cell(availability, t):
+        state = availability.admin_state(t)
+        return {
+            'state': state,
+            'slot': availability.slots.get(t),
+            'reservation': availability.occupied.get(t),
+            'label': f'{t.month}月{t.day}日 {t:%-H:%M}',
+        }
 
-    def cell(slot):
-        if slot is None:
-            return {'state': 'none'}
-        return {'state': slot.admin_state(now), 'slot': slot}
+    return _week(project, first, ALL_TIMES, cell, now)
 
-    return _week(project, first, ALL_TIMES, cell)
+
+def toggleable(project, slots, now=None):
+    """◯・×を切り替えてよい枠（設定画面で「◯」か「×」と表示している枠）だけを返す"""
+    if not slots:
+        return []
+    starts = [s.start for s in slots]
+    availability = Availability(project, min(starts), max(starts) + SLOT, now)
+    return [s for s in slots if availability.admin_state(s.start) in ('open', 'closed')]

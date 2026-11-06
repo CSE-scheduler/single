@@ -313,8 +313,8 @@ input[type="checkbox"] {
 }
 
 .mark--closed {
-    color: var(--gray-dark);
-    background-color: var(--gray-light);
+    color: #A9AEB4;
+    background-color: #F1F3F5;
 }
 
 .mark--reserved {
@@ -332,7 +332,8 @@ input[type="checkbox"] {
 }
 
 .mark--none {
-    color: #A9AEB4;
+    color: var(--gray-dark);
+    background-color: var(--gray-light);
 }
 
 /* 表の左上のセル（月） */

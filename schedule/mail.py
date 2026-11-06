@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def render(project, reservation):
     """タイトルと本文の {日時} {氏名} を置き換える"""
     values = {
-        '{日時}': reservation.slot.label(with_year=True),
+        '{日時}': reservation.label(with_year=True),
         '{氏名}': reservation.full_name,
     }
     subject, body = project.mail_subject, project.mail_body

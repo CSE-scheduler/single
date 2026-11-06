@@ -47,12 +47,12 @@
     }
 
     .grid button.cell.mark--closed {
-        color: var(--gray-dark);
-        background-color: var(--gray-light);
+        color: #A9AEB4;
+        background-color: #F1F3F5;
     }
 
     .grid button.cell.mark--closed:hover {
-        background-color: #cfd3d8;
+        background-color: var(--primary-selected);
     }
 
     .grid button.cell:disabled {
@@ -125,6 +125,13 @@
 
     .period-form button {
         margin-top: 26px;
+    }
+
+    .buffer-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
     .period-form select {
@@ -241,9 +248,31 @@
                 </select>
                 {{ period_form.close.errors }}
             </div>
+            <div class="form-group">
+                <label for="id_duration">所要時間</label>
+                <select name="duration" id="id_duration">
+                    {% for value, label in period_form.fields.duration.choices %}<option value="{{ value }}" {% if value|stringformat:"s" == period_form.duration.value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                {{ period_form.duration.errors }}
+            </div>
+            <div class="form-group">
+                <span class="form-label">予約の前後を自動で閉じる</span>
+                <div class="buffer-row">
+                    予約された枠の
+                    <select name="buffer_side" aria-label="閉じる側">
+                        {% for value, label in period_form.fields.buffer_side.choices %}<option value="{{ value }}" {% if value == period_form.buffer_side.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                    <select name="buffer_minutes" aria-label="閉じる時間">
+                        {% for value, label in period_form.fields.buffer_minutes.choices %}<option value="{{ value }}" {% if value|stringformat:"s" == period_form.buffer_minutes.value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                    を閉じる
+                </div>
+                {{ period_form.buffer_minutes.errors }}
+            </div>
             <button type="submit">期間を保存</button>
         </form>
         <p class="note">参加者にはこの期間の日付と時間帯だけを見せます（一番遅い時刻は、最後の枠が終わる時刻です。例：18:00 なら最後の枠は 17:30〜18:00）。期間外の枠は下のカレンダーで「-」になります。</p>
+        <p class="note">所要時間：予約するとこの時間ぶんの枠がふさがります。参加者の画面では、後ろに所要時間ぶんの空きがある枠だけを選べます（変えても、すでに入っている予約の時間は変わりません）。予約の前後を閉じる設定にすると、予約の前後の枠も自動で「-」になり、その時間に重なる予約はできなくなります。</p>
         <p class="note">「予約を自動で締め切る枠」の範囲に始まる枠は、時間がたつと自動で予約できなくなります（参加者の画面では「×」、下のカレンダーでは「-」）。例：「今から2時間以内」なら、始まる2時間前に締め切ります。「今日中」なら当日の枠は予約できず、明日以降の枠だけ予約できます。</p>
 
         <h3>予約状況カレンダー</h3>

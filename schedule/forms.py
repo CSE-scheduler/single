@@ -4,7 +4,8 @@ import os
 from django import forms
 
 from .models import (
-    CLOSE_DAYS_MAX, CLOSE_HOURS_MAX, FIELDS, SEX_CHOICES, TIME_OPTIONS, Project, validate_project_name,
+    BUFFER_CHOICES, BUFFER_SIDES, CLOSE_DAYS_MAX, CLOSE_HOURS_MAX, DURATION_CHOICES, FIELDS, SEX_CHOICES,
+    TIME_OPTIONS, Project, minutes_label, validate_project_name,
 )
 
 # 説明書としてアップロードできるファイル（拡張子 → 配信するときの種類）
@@ -47,10 +48,15 @@ class PeriodForm(forms.ModelForm):
     time_start = forms.TypedChoiceField(choices=TIME_CHOICES[:-1], coerce=lambda v: datetime.time.fromisoformat(v))
     time_end = forms.TypedChoiceField(choices=TIME_CHOICES[1:], coerce=lambda v: datetime.time.fromisoformat(v))
     close = forms.ChoiceField(choices=CLOSE_CHOICES)
+    duration = forms.TypedChoiceField(choices=[(m, minutes_label(m)) for m in DURATION_CHOICES], coerce=int)
+    buffer_side = forms.ChoiceField(choices=BUFFER_SIDES)
+    buffer_minutes = forms.TypedChoiceField(
+        choices=[(0, '閉じない')] + [(m, minutes_label(m)) for m in BUFFER_CHOICES if m], coerce=int,
+    )
 
     class Meta:
         model = Project
-        fields = ['period_start', 'period_end', 'time_start', 'time_end']
+        fields = ['period_start', 'period_end', 'time_start', 'time_end', 'duration', 'buffer_side', 'buffer_minutes']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

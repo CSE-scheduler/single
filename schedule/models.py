@@ -38,6 +38,24 @@ CLOSE_MODES = [('hours', '今からn時間以内'), ('today', '今日中'), ('to
 CLOSE_HOURS_MAX = 24
 CLOSE_DAYS_MAX = 7
 
+# 所要時間（30分〜4時間の30分刻み）と、予約の前後を自動で閉じる時間（バッファ）
+DURATION_CHOICES = list(range(SLOT_MINUTES, 241, SLOT_MINUTES))
+BUFFER_SIDES = [('before', '前'), ('after', '後ろ'), ('both', '前後')]
+BUFFER_CHOICES = [0, 30, 60, 90, 120]
+
+
+def minutes_label(minutes):
+    # 例：30 → 「30分」、90 → 「1時間30分」
+    hours, rest = divmod(minutes, 60)
+    return (f'{hours}時間' if hours else '') + (f'{rest}分' if rest or not hours else '')
+
+
+def time_range_label(start, minutes, with_year=False):
+    # 例：「11月5日(木) 10:30〜11:30」
+    end = start + datetime.timedelta(minutes=minutes)
+    year = f'{start.year}年' if with_year else ''
+    return f'{year}{start.month}月{start.day}日({DAY_NAMES[start.weekday()]}) {start:%-H:%M}〜{end:%-H:%M}'
+
 
 # ---- プロジェクト名 ----
 # URLにそのまま使うので、アルファベット・数字・URLに入れても意味が変わらない記号だけにする
@@ -120,6 +138,11 @@ class Project(models.Model):
     # この範囲に始まる枠は、予約を自動で締め切る（例：close_mode='hours', close_value=2 → 今から2時間以内に始まる枠）
     close_mode = models.CharField(max_length=10, choices=CLOSE_MODES, default='hours')
     close_value = models.PositiveSmallIntegerField(default=2)
+    # 所要時間（分）。予約するとこの時間ぶんの枠がふさがる
+    duration = models.PositiveSmallIntegerField('所要時間', default=SLOT_MINUTES)
+    # 予約された枠の前・後ろ・前後を、buffer_minutes 分だけ自動で閉じる（0なら閉じない）
+    buffer_side = models.CharField(max_length=10, choices=BUFFER_SIDES, default='both')
+    buffer_minutes = models.PositiveSmallIntegerField(default=0)
 
     # 最初の画面（同意画面）
     consent_text = models.TextField('最初の画面の文言', blank=True, default=DEFAULT_CONSENT_TEXT)
@@ -204,6 +227,19 @@ class Project(models.Model):
             return midnight + datetime.timedelta(days=self.close_value + 1)
         return now + datetime.timedelta(hours=self.close_value)
 
+    @property
+    def buffer_before(self):
+        minutes = self.buffer_minutes if self.buffer_side in ('before', 'both') else 0
+        return datetime.timedelta(minutes=minutes)
+
+    @property
+    def buffer_after(self):
+        minutes = self.buffer_minutes if self.buffer_side in ('after', 'both') else 0
+        return datetime.timedelta(minutes=minutes)
+
+    def duration_label(self):
+        return minutes_label(self.duration)
+
     def close_label(self):
         if self.close_mode == 'hours':
             return f'今から{self.close_value}時間以内'
@@ -251,12 +287,8 @@ class Slot(models.Model):
     def end(self):
         return self.start + datetime.timedelta(minutes=SLOT_MINUTES)
 
-    def label(self, with_year=False):
-        # 例：「11月5日(木) 10:30〜11:00」
-        day = self.start.date()
-        day_name = DAY_NAMES[day.weekday()]
-        year = f'{day.year}年' if with_year else ''
-        return f'{year}{day.month}月{day.day}日({day_name}) {self.start:%-H:%M}〜{self.end:%-H:%M}'
+    def label(self, minutes=SLOT_MINUTES, with_year=False):
+        return time_range_label(self.start, minutes, with_year)
 
     @property
     def reserved(self):
@@ -265,24 +297,13 @@ class Slot(models.Model):
         except Reservation.DoesNotExist:
             return False
 
-    def admin_state(self, now):
-        """設定画面での表示。open：◯（受付中）、closed：×（受付停止）、reserved：予（予約あり）、
-        paid：済（謝金支払い済み）、none：-（締め切った枠・過ぎた枠・募集期間外。切り替えられない）"""
-        if self.reserved:
-            return 'paid' if self.reservation.paid else 'reserved'
-        if self.start < self.project.close_cutoff(now) or not self.project.in_period(self.start):
-            return 'none'
-        return 'closed' if self.closed else 'open'
-
-    def bookable(self, now):
-        """参加者が予約できるか（締め切り前・募集期間内・受付中・予約なし）"""
-        return (not self.reserved and not self.closed and self.start >= self.project.close_cutoff(now)
-                and self.project.in_period(self.start))
 
 
 class Reservation(models.Model):
     slot = models.OneToOneField(Slot, on_delete=models.CASCADE, related_name='reservation')
     created_at = models.DateTimeField(auto_now_add=True)
+    # 予約したときの所要時間（分）。あとでプロジェクトの所要時間を変えても、この予約は変わらない
+    duration = models.PositiveSmallIntegerField(default=SLOT_MINUTES)
 
     full_name = models.CharField('氏名', max_length=200, blank=True, default='')
     age = models.PositiveSmallIntegerField('年齢', null=True, blank=True)
@@ -304,6 +325,17 @@ class Reservation(models.Model):
 
     def __str__(self):
         return f'{self.slot} {self.full_name or self.mail}'
+
+    @property
+    def start(self):
+        return self.slot.start
+
+    @property
+    def end(self):
+        return self.slot.start + datetime.timedelta(minutes=self.duration)
+
+    def label(self, with_year=False):
+        return time_range_label(self.slot.start, self.duration, with_year)
 
     def display(self, key):
         value = getattr(self, key)
