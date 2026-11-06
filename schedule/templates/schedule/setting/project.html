@@ -544,7 +544,7 @@
             <ul class="errorlist" id="extra-modal-error" hidden><li>項目名を入力してください。</li></ul>
         </div>
         <div class="button-group">
-            <button type="submit">取得する</button>
+            <button type="submit">追加する</button>
         </div>
     </form>
 </dialog>
@@ -804,7 +804,8 @@
         const title = row.querySelector('input[name^="title_extra"]');
         if (!checkbox || !title) return;
         checkbox.addEventListener('click', (event) => {
-            if (!checkbox.checked) return;  // 外すときはそのまま保存する
+            // 外すとき・項目名がすでに入っているときは、そのまま保存する
+            if (!checkbox.checked || title.value.trim()) return;
             event.preventDefault();
             extraTarget = [checkbox, title];
             extraInput.value = title.value;
