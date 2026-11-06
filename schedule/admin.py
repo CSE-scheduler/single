@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Project, Reservation, Slot
+from .models import MailLog, Project, Reservation, Slot
 
 
 @admin.register(Project)
@@ -16,5 +16,10 @@ class SlotAdmin(admin.ModelAdmin):
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
-    list_display = ['slot', 'full_name', 'name', 'mail', 'paid']
+    list_display = ['slot', 'full_name', 'mail', 'paid']
     list_filter = ['slot__project', 'paid']
+
+
+@admin.register(MailLog)
+class MailLogAdmin(admin.ModelAdmin):
+    list_display = ['reservation', 'kind', 'sent_at']

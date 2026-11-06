@@ -39,7 +39,6 @@ def validate_project_name(value):
 # (項目のキー, 標準の項目名, 種類, 項目名を設定画面で変えられるか)
 # 種類：text（1行の文字）, textarea（複数行の文字）, age（数字）, sex（選択）, email, bool（はい・いいえ）
 FIELDS = [
-    ('name', '名前', 'text', False),
     ('full_name', '氏名', 'text', False),
     ('age', '年齢', 'age', False),
     ('sex', '性別', 'sex', False),
@@ -70,6 +69,14 @@ DEFAULT_COMPLETE_TEXT = (
 
 # 行の終わりがこれらのタグなら、改行を <br> にしない（見出しや段落のあとに余計な空行ができないように）
 _BLOCK_TAG_END = re.compile(r'(</?(?:h[1-6]|p|div|ul|ol|li|table|thead|tbody|tr|th|td|br|hr)\b[^>]*>)[ \t]*\n', re.I)
+DEFAULT_MAIL_SUBJECT = '実験のご予約について'
+DEFAULT_MAIL_BODY = (
+    '{氏名} 様\n\n'
+    'この度は実験にお申し込みいただきありがとうございます。\n'
+    '下記の日時でご予約を承っております。\n\n'
+    '日時：{日時}\n\n'
+    '当日はどうぞよろしくお願いいたします。\n'
+)
 
 
 def _html(text):
@@ -96,8 +103,17 @@ class Project(models.Model):
     complete_button_text = models.CharField('遷移ボタンの文言', max_length=200, blank=True, default='')
     complete_button_url = models.CharField('遷移ボタンの遷移先', max_length=2000, blank=True, default='')
 
+    # 確認メール
+    mail_enabled = models.BooleanField('確認メールを送る', default=False)
+    mail_from = models.EmailField('送信元アドレス', blank=True, default='')
+    mail_on_booking = models.BooleanField('予約直後', default=True)
+    mail_2days = models.BooleanField('2日前', default=False)
+    mail_1day = models.BooleanField('前日', default=True)
+    mail_1hour = models.BooleanField('1時間前', default=False)
+    mail_subject = models.CharField('件名', max_length=200, blank=True, default=DEFAULT_MAIL_SUBJECT)
+    mail_body = models.TextField('本文', blank=True, default=DEFAULT_MAIL_BODY)
+
     # 予約のときに取得する項目（取得する・しない）
-    use_name = models.BooleanField(default=False)
     use_full_name = models.BooleanField(default=True)
     use_age = models.BooleanField(default=False)
     use_sex = models.BooleanField(default=False)
@@ -211,11 +227,21 @@ class Slot(models.Model):
         return 'closed' if self.closed else 'open'
 
 
+class MailLog(models.Model):
+    """送った確認メールの記録（同じメールを二度送らないため）"""
+    reservation = models.ForeignKey('Reservation', on_delete=models.CASCADE, related_name='mail_logs')
+    # booking：予約直後、2days：2日前、1day：前日、1hour：1時間前
+    kind = models.CharField(max_length=10)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['reservation', 'kind'], name='unique_mail_per_kind')]
+
+
 class Reservation(models.Model):
     slot = models.OneToOneField(Slot, on_delete=models.CASCADE, related_name='reservation')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    name = models.CharField('名前', max_length=200, blank=True, default='')
     full_name = models.CharField('氏名', max_length=200, blank=True, default='')
     age = models.PositiveSmallIntegerField('年齢', null=True, blank=True)
     sex = models.CharField('性別', max_length=10, choices=SEX_CHOICES, blank=True, default='')
@@ -235,7 +261,7 @@ class Reservation(models.Model):
         ordering = ['slot__start']
 
     def __str__(self):
-        return f'{self.slot} {self.full_name or self.name or self.mail}'
+        return f'{self.slot} {self.full_name or self.mail}'
 
     def display(self, key):
         value = getattr(self, key)

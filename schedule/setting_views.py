@@ -1,12 +1,12 @@
 """実験者が使う設定画面（パスワードで保護）"""
 
 import datetime
-import hmac
 from functools import wraps
 from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.hashers import check_password
 from django.db.models import Count, Q
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -39,7 +39,7 @@ def login(request):
     error = ''
     if request.method == 'POST':
         password = request.POST.get('password', '')
-        if hmac.compare_digest(password.encode(), settings.SCHEDULE_ADMIN_PASSWORD.encode()):
+        if password and check_password(password, settings.SCHEDULE_ADMIN_PASSWORD_HASH):
             request.session.cycle_key()
             request.session[SESSION_KEY] = True
             return redirect(next_url or 'setting_home')
@@ -140,8 +140,6 @@ SORTS = {
     '-date': ['-slot__start'],
     'full_name': ['full_name', 'slot__start'],
     '-full_name': ['-full_name', 'slot__start'],
-    'name': ['name', 'slot__start'],
-    '-name': ['-name', 'slot__start'],
 }
 
 
@@ -202,7 +200,7 @@ def appointments(request, project):
     def sort_mark(key):
         return '▲' if sort == key else ('▼' if sort == f'-{key}' else '')
 
-    sortable = {'name', 'full_name'}
+    sortable = {'full_name'}
     columns = [
         {**f, 'sort_link': sort_link(f['key']) if f['key'] in sortable else None,
          'sort_mark': sort_mark(f['key']) if f['key'] in sortable else ''}

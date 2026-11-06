@@ -10,8 +10,10 @@ SECRET_KEY = "ここにランダムな文字列を書く"
 
 ALLOWED_HOSTS = ["csescheduler.pythonanywhere.com"]
 
-# 設定画面（/setting/home）に入るためのパスワード
-SCHEDULE_ADMIN_PASSWORD = "ここに設定画面のパスワードを書く"
+# 確認メールを送るときだけ書く。送信に使うGmailのアドレスと、そのアカウントの「アプリパスワード」（16文字）
+# （Googleアカウント → セキュリティ → 2段階認証プロセス → アプリパスワード で作る）
+# EMAIL_HOST_USER = "送信用のGmailアドレス"
+# EMAIL_HOST_PASSWORD = "アプリパスワード"
 
 # HTTPSでだけクッキーを送る（PythonAnywhereの「Force HTTPS」をオンにしておく）
 SESSION_COOKIE_SECURE = True

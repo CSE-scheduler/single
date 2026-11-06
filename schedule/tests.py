@@ -1,14 +1,20 @@
 import datetime
 
+from django.contrib.auth.hashers import make_password
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .models import DAYS_AHEAD, N_SLOTS, Project, Reservation, Slot
+from .mail import send_due
+from .models import DAYS_AHEAD, N_SLOTS, MailLog, Project, Reservation, Slot
+
+TEST_PASSWORD = 'test-pass'
+TEST_HASH = make_password(TEST_PASSWORD)
 
 
 def login(client):
-    client.post(reverse('setting_login'), {'password': '1234'})
+    client.post(reverse('setting_login'), {'password': TEST_PASSWORD})
 
 
 def tomorrow_slot(project, hour=10):
@@ -125,12 +131,15 @@ class ParticipantFlowTests(TestCase):
         self.assertRedirects(response, reverse('timeframe', args=['exp-1']))
 
 
+@override_settings(SCHEDULE_ADMIN_PASSWORD_HASH=TEST_HASH)
 class SettingTests(TestCase):
     def test_requires_login(self):
         response = self.client.get(reverse('setting_home'))
         self.assertTrue(response['Location'].startswith(reverse('setting_login')))
         self.client.post(reverse('setting_login'), {'password': 'wrong'})
         self.assertEqual(self.client.get(reverse('setting_home')).status_code, 302)
+        login(self.client)
+        self.assertEqual(self.client.get(reverse('setting_home')).status_code, 200)
 
     def test_create_edit_delete_project(self):
         login(self.client)
@@ -223,3 +232,103 @@ class SettingTests(TestCase):
         self.assertRedirects(response, url + '?sort=-date')
         self.assertFalse(Reservation.objects.filter(pk=r2.pk).exists())
         self.assertTrue(Slot.objects.filter(pk=r2.slot_id).exists())
+
+
+class MailTests(TestCase):
+    def setUp(self):
+        self.project = Project.objects.create(
+            name='mailexp', use_full_name=True, use_mail=True,
+            mail_enabled=True, mail_from='lab@example.com',
+            mail_on_booking=True, mail_2days=True, mail_1day=True, mail_1hour=True,
+            mail_subject='{日時}のご予約', mail_body='{氏名} 様\n日時：{日時}\nhttps://example.com/zoom\n',
+        )
+        self.project.ensure_slots()
+
+    def test_booking_mail(self):
+        slot = tomorrow_slot(self.project)
+        data = {'slot': slot.pk, 'full_name': '山田太郎', 'mail': 'a@example.com'}
+        self.client.post(reverse('confirm', args=['mailexp']), data)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['a@example.com'])
+        self.assertEqual(message.from_email, 'lab@example.com')
+        self.assertEqual(message.reply_to, ['lab@example.com'])
+        self.assertEqual(message.subject, slot.label(with_year=True) + 'のご予約')
+        self.assertIn('山田太郎 様', message.body)
+        # 二度押ししても2通目は送らない
+        self.client.post(reverse('confirm', args=['mailexp']), data)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_no_mail_when_disabled(self):
+        self.project.mail_enabled = False
+        self.project.save()
+        slot = tomorrow_slot(self.project)
+        self.client.post(reverse('confirm', args=['mailexp']), {'slot': slot.pk, 'full_name': 'x', 'mail': 'a@example.com'})
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reminders(self):
+        later = datetime.date.today() + datetime.timedelta(days=5)
+        slot = Slot.objects.get(project=self.project, start=datetime.datetime.combine(later, datetime.time(10)))
+        r = Reservation.objects.create(slot=slot, full_name='x', mail='a@example.com')
+        Reservation.objects.filter(pk=r.pk).update(created_at=slot.start - datetime.timedelta(days=4))
+
+        self.assertEqual(send_due(now=slot.start - datetime.timedelta(days=3)), 0)
+        self.assertEqual(send_due(now=slot.start - datetime.timedelta(hours=47)), 1)   # 2日前
+        self.assertEqual(send_due(now=slot.start - datetime.timedelta(hours=46)), 0)   # 二重に送らない
+        self.assertEqual(send_due(now=slot.start - datetime.timedelta(hours=23)), 1)   # 前日
+        self.assertEqual(send_due(now=slot.start - datetime.timedelta(minutes=50)), 1)  # 1時間前
+        self.assertEqual(send_due(now=slot.start + datetime.timedelta(minutes=5)), 0)
+        self.assertEqual(sorted(MailLog.objects.values_list('kind', flat=True)), ['1day', '1hour', '2days'])
+
+    def test_late_booking_skips_past_reminders(self):
+        later = datetime.date.today() + datetime.timedelta(days=5)
+        slot = Slot.objects.get(project=self.project, start=datetime.datetime.combine(later, datetime.time(10)))
+        r = Reservation.objects.create(slot=slot, full_name='x', mail='a@example.com')
+        Reservation.objects.filter(pk=r.pk).update(created_at=slot.start - datetime.timedelta(hours=30))
+        self.assertEqual(send_due(now=slot.start - datetime.timedelta(hours=20)), 1)  # 前日だけ
+        self.assertEqual(list(MailLog.objects.values_list('kind', flat=True)), ['1day'])
+
+    def test_failed_send_is_retried(self):
+        later = datetime.date.today() + datetime.timedelta(days=5)
+        slot = Slot.objects.get(project=self.project, start=datetime.datetime.combine(later, datetime.time(10)))
+        r = Reservation.objects.create(slot=slot, full_name='x', mail='a@example.com')
+        Reservation.objects.filter(pk=r.pk).update(created_at=slot.start - datetime.timedelta(days=4))
+        now = slot.start - datetime.timedelta(minutes=30)
+        self.project.mail_2days = self.project.mail_1day = False
+        self.project.save()
+        with override_settings(EMAIL_BACKEND='schedule.tests.FailingBackend'):
+            self.assertEqual(send_due(now=now), 0)
+        self.assertFalse(MailLog.objects.exists())
+        self.assertEqual(send_due(now=now), 1)
+
+
+from django.core.mail.backends.base import BaseEmailBackend  # noqa: E402
+
+
+class FailingBackend(BaseEmailBackend):
+    def send_messages(self, messages):
+        raise ConnectionError('SMTPにつながらない')
+
+
+@override_settings(SCHEDULE_ADMIN_PASSWORD_HASH=TEST_HASH)
+class MailSettingTests(TestCase):
+    def test_mail_requires_email_field(self):
+        login(self.client)
+        project = Project.objects.create(name='m1', use_mail=False)
+        response = self.client.post(reverse('setting_project', args=['m1']), {
+            'name': 'm1', 'use_full_name': 'on', 'mail_enabled': 'on', 'mail_from': '',
+            'mail_subject': 's', 'mail_body': 'b',
+        })
+        self.assertContains(response, '「メールアドレス」を「取得する」にしてください')
+        self.assertContains(response, '送信元アドレスを入力してください')
+        self.assertContains(response, '送るタイミングを1つ以上選んでください')
+        project.refresh_from_db()
+        self.assertFalse(project.mail_enabled)
+
+        response = self.client.post(reverse('setting_project', args=['m1']), {
+            'name': 'm1', 'use_mail': 'on', 'mail_enabled': 'on', 'mail_from': 'lab@example.com',
+            'mail_1day': 'on', 'mail_subject': 's', 'mail_body': 'b',
+        })
+        self.assertRedirects(response, reverse('setting_project', args=['m1']))
+        project.refresh_from_db()
+        self.assertTrue(project.mail_enabled and project.mail_1day and not project.mail_on_booking)

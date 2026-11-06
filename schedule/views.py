@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .calendar import build_weeks
 from .forms import reservation_form, reservation_values
+from .mail import send_on_booking
 from .models import Project, Reservation, Slot
 
 
@@ -106,6 +107,8 @@ def confirm(request, project):
                         'この日時はすでに予約が入りました。お手数ですが、日時を選択しなおしてください。')
 
     request.session[key] = reservation.pk
+    # 確認メール（送れなくても予約は保存済みなので、エラー画面にはしない）
+    send_on_booking(reservation)
     return redirect('complete', project.name)
 
 

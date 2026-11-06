@@ -96,6 +96,21 @@
         white-space: nowrap;
     }
 
+    .checkbox-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 400 !important;
+        cursor: pointer;
+    }
+
+    .checkbox-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        padding: 4px 0;
+    }
+
     .manual-current {
         display: flex;
         align-items: center;
@@ -185,7 +200,7 @@
                             {% if not slot %}
                             <span class="mark">-</span>
                             {% elif slot.state == 'reserved' %}
-                            <a class="mark mark--reserved" href="{% url 'setting_appointments' project.name %}?from={{ slot.start|date:'Y-m-d' }}&to={{ slot.start|date:'Y-m-d' }}" title="{{ slot.reservation.full_name|default:slot.reservation.name }}">済</a>
+                            <a class="mark mark--reserved" href="{% url 'setting_appointments' project.name %}?from={{ slot.start|date:'Y-m-d' }}&to={{ slot.start|date:'Y-m-d' }}" title="{{ slot.reservation.full_name }}">済</a>
                             {% else %}
                             <button type="button" class="cell mark mark--{{ slot.state }}" data-id="{{ slot.pk }}" title="{{ slot.label }}">{% if slot.state == 'open' %}◯{% else %}×{% endif %}</button>
                             {% endif %}
@@ -293,6 +308,44 @@
                 <input type="url" name="complete_button_url" id="id_complete_button_url" maxlength="2000" value="{{ form.complete_button_url.value|default:'' }}" placeholder="https://...">
                 <p class="note">文言と遷移先の両方を空にすると、ボタンは出ません。</p>
                 {{ form.complete_button_url.errors }}
+            </div>
+        </div>
+
+        <!-- ===== 確認メール ===== -->
+        <div class="section">
+            <h3>確認メール</h3>
+            <div class="form-group">
+                <label class="checkbox-label"><input type="checkbox" name="mail_enabled" id="id_mail_enabled" {% if form.mail_enabled.value %}checked{% endif %}> 確認メールを送る</label>
+                <p class="note">予約した人の「メールアドレス」に送ります（上の「取得するデータ」でメールアドレスを「取得する」にしてください）。</p>
+                {{ form.mail_enabled.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_mail_from">送信元アドレス</label>
+                <input type="email" name="mail_from" id="id_mail_from" maxlength="254" value="{{ form.mail_from.value|default:'' }}" placeholder="例：yourname@example.com">
+                <p class="note">参加者が返信すると、このアドレスに届きます。Gmailで送信しているため、このアドレスを送信用Gmailの「他のアドレスからメールを送信」に登録していないと、差出人の表示は送信用Gmailのアドレスになります（返信先はこのアドレスのままです）。</p>
+                {{ form.mail_from.errors }}
+            </div>
+            <div class="form-group">
+                <span class="form-label">送るタイミング（複数選べます）</span>
+                <div class="checkbox-row">
+                    <label class="checkbox-label"><input type="checkbox" name="mail_on_booking" {% if form.mail_on_booking.value %}checked{% endif %}> 予約直後</label>
+                    <label class="checkbox-label"><input type="checkbox" name="mail_2days" {% if form.mail_2days.value %}checked{% endif %}> 2日前</label>
+                    <label class="checkbox-label"><input type="checkbox" name="mail_1day" {% if form.mail_1day.value %}checked{% endif %}> 前日</label>
+                    <label class="checkbox-label"><input type="checkbox" name="mail_1hour" {% if form.mail_1hour.value %}checked{% endif %}> 1時間前</label>
+                </div>
+                <p class="note">2日前・前日・1時間前は、実験開始の48時間前・24時間前・1時間前を過ぎたら送ります。その時刻より後に予約した人には送りません。</p>
+            </div>
+            <div class="form-group">
+                <label for="id_mail_subject">件名</label>
+                <input type="text" name="mail_subject" id="id_mail_subject" maxlength="200" value="{{ form.mail_subject.value|default:'' }}">
+                {{ form.mail_subject.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_mail_body">本文</label>
+                <textarea name="mail_body" id="id_mail_body" rows="12">{{ form.mail_body.value|default:'' }}</textarea>
+                <p class="note">「{日時}」は予約した日時、「{氏名}」は入力された氏名に置き換わります（件名でも使えます）。すべてのタイミングで同じ本文を送ります。</p>
+                <p class="note">文字だけのメールとして送ります。https:// で始まるURLをそのまま書けば、ほとんどのメールアプリでリンクになります。URLの直後に文字が続くとリンクの範囲がずれることがあるので、URLは1行に単独で書いてください。</p>
+                {{ form.mail_body.errors }}
             </div>
         </div>
 

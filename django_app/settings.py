@@ -17,8 +17,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = True
 SECRET_KEY = "django-insecure-dev-only-do-not-use-in-production"
 ALLOWED_HOSTS = []
-# 設定画面（/setting/home）に入るためのパスワード
-SCHEDULE_ADMIN_PASSWORD = "1234"
+# 設定画面（/setting/home）に入るためのパスワード。GitHubに平文を置かないよう、ハッシュにしたものを書く。
+# 変えるときは次のコマンドで作った値に置き換える（local_settings.py で上書きしてもよい）：
+#   python manage.py shell -c "from django.contrib.auth.hashers import make_password; print(make_password('新しいパスワード'))"
+SCHEDULE_ADMIN_PASSWORD_HASH = "pbkdf2_sha256$870000$Mn4I3RIS7k03EQXaoGEIVZ$McsuofrrT0ZETw59O2tyIXS5uYmGNPqhf0gK+Tdzs/c="
+# 確認メールの送信に使うSMTP（GmailのアドレスとGoogleの「アプリパスワード」）。
+# EMAIL_HOST_PASSWORD を local_settings.py に書いたときだけ実際に送る。書かなければ送らずにログに出すだけ
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_HOST_USER = ""
+EMAIL_HOST_PASSWORD = ""
 # MySQLを使うときは local_settings.py に MYSQL = {"NAME": ..., "USER": ..., "PASSWORD": ..., "HOST": ...} を書く
 MYSQL = None
 
@@ -30,8 +38,15 @@ except ImportError:
 if not DEBUG:
     if SECRET_KEY.startswith("django-insecure"):
         raise ImproperlyConfigured("local_settings.py に SECRET_KEY を設定してください。")
-    if SCHEDULE_ADMIN_PASSWORD == "1234":
-        raise ImproperlyConfigured("local_settings.py に SCHEDULE_ADMIN_PASSWORD を設定してください。")
+
+if EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_USE_TLS = True
+    EMAIL_TIMEOUT = 10
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# プロジェクトで送信元アドレスを設定していないときに使うアドレス
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or "webmaster@localhost"
 
 
 INSTALLED_APPS = [

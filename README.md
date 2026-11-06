@@ -10,7 +10,7 @@
 | --- | --- |
 | `/<プロジェクト名>/` | 参加者用。最初の画面（同意画面）→ 日時選択 → 入力 → 予約完了 |
 | `/setting/home` | 設定画面（パスワードが必要）。プロジェクトの作成・一覧・削除 |
-| `/setting/home/<プロジェクト名>` | プロジェクトの編集。予約状況カレンダー（マスを押して受付・受付停止を切り替え）、各画面の文言、説明書、取得する項目 |
+| `/setting/home/<プロジェクト名>` | プロジェクトの編集。予約状況カレンダー（マスを押して受付・受付停止を切り替え）、各画面の文言、説明書、取得する項目、確認メール |
 | `/setting/home/<プロジェクト名>/appointments` | 予約一覧。日時・氏名で並べ替え、期間で絞り込み、謝金支払い済みの切り替え、予約の削除 |
 
 - 枠は 8:00〜23:00 の30分ごと。今日から90日後までの枠が、画面を開いたときに自動で作られます（`schedule/models.py` の `DAYS_AHEAD` などで変えられます）。
@@ -26,7 +26,7 @@ python3 -m venv .venv
 .venv/bin/python manage.py runserver
 ```
 
-`django_app/local_settings.py` がないときは開発用の設定（SQLite、設定画面のパスワード `1234`）で動きます。
+`django_app/local_settings.py` がないときは開発用の設定（SQLite、メールは送らずにターミナルに表示）で動きます。
 http://127.0.0.1:8000/setting/home を開いてプロジェクトを作ってください。
 
 テスト：`.venv/bin/python manage.py test schedule`
@@ -41,7 +41,7 @@ cd single
 mkvirtualenv --python=python3.12 scheduler   # 仮想環境を作る（作ると自動で有効になる）
 pip install -r requirements.txt
 
-# 本番の設定ファイルを作り、SECRET_KEY と設定画面のパスワードを書き換える
+# 本番の設定ファイルを作り、SECRET_KEY（とメールを送るならGmailの設定）を書く
 cp django_app/local_settings_example.py django_app/local_settings.py
 python -c "import secrets; print(secrets.token_urlsafe(50))"   # これを SECRET_KEY に貼る
 nano django_app/local_settings.py
@@ -75,7 +75,50 @@ python manage.py collectstatic --noinput
 6. **Force HTTPS** をオンにする
 7. 上の緑の **Reload** ボタンを押す
 
-https://csescheduler.pythonanywhere.com/setting/home を開き、`local_settings.py` に書いたパスワードでログインできれば完了です。
+https://csescheduler.pythonanywhere.com/setting/home を開き、設定画面のパスワードでログインできれば完了です。
+
+## 設定画面のパスワード
+
+`django_app/settings.py` の `SCHEDULE_ADMIN_PASSWORD_HASH` に、パスワードをハッシュにした値を書いています（GitHubに平文を置かないため）。変えるときは次のコマンドで作った値に置き換えます。
+
+```bash
+python manage.py shell -c "from django.contrib.auth.hashers import make_password; print(make_password('新しいパスワード'))"
+```
+
+## 確認メール
+
+プロジェクトの編集画面の「確認メール」で、送るかどうか・送信元アドレス・送るタイミング（予約直後／2日前／前日／1時間前）・件名・本文を設定します。本文の `{日時}` `{氏名}` は予約ごとに置き換わります。
+
+### 送信用のGmailを設定する
+
+メールは Gmail のSMTPから送ります（PythonAnywhereの無料プランでも使えます）。
+
+1. 送信に使う Google アカウントで2段階認証をオンにし、「アプリパスワード」を作る
+2. `django_app/local_settings.py` に書いて、Reload する
+
+   ```python
+   EMAIL_HOST_USER = "送信用のGmailアドレス"
+   EMAIL_HOST_PASSWORD = "アプリパスワード（16文字）"
+   ```
+
+プロジェクトで設定した送信元アドレスは返信先（Reply-To）になります。差出人の表示もそのアドレスにしたいときは、送信用Gmailの「設定 → アカウント → 他のアドレスからメールを送信」にそのアドレスを登録します。
+
+### 2日前・前日・1時間前のメールを定期的に送る
+
+予約直後のメールは予約したときに送りますが、2日前・前日・1時間前のメールは次のコマンドが動いたときに送ります（送る時刻を過ぎていて、まだ実験が始まっていないものを送ります）。
+
+```bash
+python manage.py send_reminders
+```
+
+PythonAnywhereの「Tasks」タブで、どちらかを設定します。
+
+- **Always-on task**（有料プラン）：5分ごとに確かめ続けます。おすすめ
+  `cd /home/csescheduler/single && /home/csescheduler/.virtualenvs/scheduler/bin/python manage.py send_reminders --loop 300`
+- **Scheduled task**：`Hourly`（有料プラン）にすると1時間ごとに送ります。1時間前のメールは実験の0〜60分前に届きます
+  `cd /home/csescheduler/single && /home/csescheduler/.virtualenvs/scheduler/bin/python manage.py send_reminders`
+
+無料プランでは1日1回の Scheduled task しか作れないので、1時間前のメールは送れません（2日前・前日も、届く時刻が最大1日ずれます）。
 
 ### MySQL を使うとき（任意）
 
