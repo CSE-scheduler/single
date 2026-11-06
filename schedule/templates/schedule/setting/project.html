@@ -55,6 +55,19 @@
         margin-left: 8px;
     }
 
+    .button--icon-right {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding-right: 14px;
+    }
+
+    .button--icon-right svg {
+        width: 20px;
+        height: 20px;
+        color: var(--white);
+    }
+
     .section {
         margin-top: 40px;
         padding-top: 24px;
@@ -272,7 +285,7 @@
         <div>参加者数<strong>{{ stats.total }}</strong></div>
         <div>今日以降の予約<strong>{{ stats.upcoming }}</strong></div>
         <div>支払い済み<strong>{{ stats.paid }}</strong></div>
-        <a class="button button--sub" href="{% url 'setting_appointments' project.name %}">参加者一覧へ</a>
+        <a class="button button--icon-right" href="{% url 'setting_appointments' project.name %}">参加者一覧へ{% include 'schedule/icons/chevron_right.html' %}</a>
     </div>
 
     <!-- ===== 募集期間と予約状況カレンダー ===== -->
@@ -522,7 +535,7 @@
         <div class="form-group">
             <label for="id_closed_message">最初の画面に表示する文言</label>
             <textarea name="closed_message" id="id_closed_message" rows="4">{{ project.closed_message }}</textarea>
-            <p class="note">停止中は日時の選択に進めなくなり、この文言だけが表示されます（1行ずつ段落になります）。</p>
+            <p class="note">停止中は日時の選択に進めなくなり、この文言だけが表示されます。</p>
         </div>
         <div class="button-group">
             <button type="submit" class="button--danger">停止する</button>
