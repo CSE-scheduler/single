@@ -20,6 +20,13 @@
         margin: 0 !important;
     }
 
+    /* 編集画面の「公開中・停止中」はグレーの背景（角丸）をつける */
+    .status-badge--filled {
+        padding: 4px 10px;
+        border-radius: 999px;
+        background-color: var(--gray-light);
+    }
+
     .recruit {
         display: inline-flex;
         align-items: center;
@@ -248,7 +255,7 @@
     <div class="page-head">
         <div class="title-line">
             <h2>{{ project.name }}</h2>
-            <span class="status-badge{% if not project.published %} is-stopped{% endif %}">{{ project.status_label }}</span>
+            <span class="status-badge status-badge--filled{% if not project.published %} is-stopped{% endif %}">{{ project.status_label }}</span>
             <span class="recruit">
                 <a href="{{ participant_url }}" target="_blank" rel="noopener">{{ participant_url }}</a>
                 <button type="button" class="button--sub copy-button" data-url="{{ participant_url }}" title="URLをコピー" aria-label="URLをコピー">{% include 'schedule/icons/copy.html' %}</button>
