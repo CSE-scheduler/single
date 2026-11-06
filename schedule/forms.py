@@ -91,7 +91,7 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = [
-            'name', 'consent_text', 'complete_text', 'complete_button_text', 'complete_button_url',
+            'consent_text', 'complete_text', 'complete_button_text', 'complete_button_url',
             *USE_FIELDS, *TITLE_FIELDS,
             'mail_enabled', 'mail_subject', 'mail_bcc', 'mail_body',
         ]

@@ -153,6 +153,11 @@ button:disabled:hover {
 }
 
 /* ---- 入力欄 ---- */
+::placeholder {
+    color: var(--gray-light);
+    opacity: 1;
+}
+
 .form-group {
     margin-bottom: 20px;
     display: flex;

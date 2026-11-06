@@ -135,7 +135,6 @@ def project_edit(request, project):
         'index': index,
         'week': admin_week(stored, starts[index]),
         'n_reservations': Reservation.objects.filter(slot__project=stored).count(),
-        'symbols': PROJECT_NAME_SYMBOLS,
         'participant_url': request.build_absolute_uri(reverse('consent', args=[stored.name])),
     })
 

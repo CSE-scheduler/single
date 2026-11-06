@@ -295,16 +295,6 @@
     <form method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
 
-        <!-- ===== プロジェクト名 ===== -->
-        <div class="section">
-            <h3>プロジェクト名</h3>
-            <div class="form-group">
-                <input type="text" name="name" id="id_name" maxlength="100" value="{{ form.name.value|default:'' }}" required>
-                <p class="note">参加者用ページのURLになります。変えると今までのURLは使えなくなります。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
-                {{ form.name.errors }}
-            </div>
-        </div>
-
         <!-- ===== 最初の画面 ===== -->
         <div class="section">
             <h3>最初の画面（同意画面）</h3>

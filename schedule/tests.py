@@ -344,21 +344,23 @@ class SettingTests(TestCase):
             'manual': SimpleUploadedFile('manual.pdf', b'%PDF-1.4', content_type='application/pdf'),
         }
         response = self.client.post(reverse('setting_project', args=['exp2']), data)
-        self.assertRedirects(response, reverse('setting_project', args=['exp2b']))
+        # プロジェクト名は変えられない（name を送っても無視する）
+        self.assertRedirects(response, reverse('setting_project', args=['exp2']))
         project.refresh_from_db()
-        self.assertEqual(project.name, 'exp2b')
+        self.assertEqual(project.name, 'exp2')
+        self.assertNotContains(self.client.get(reverse('setting_project', args=['exp2'])), 'name="name"')
         self.assertFalse(project.use_mail)
         self.assertEqual(bytes(project.manual_data), b'%PDF-1.4')
         self.assertEqual([f['title'] for f in project.fields()], ['氏名', '所属'])
 
         # その他を取得するのに項目名がない、ボタンの遷移先が javascript: は保存しない
-        bad = self.client.post(reverse('setting_project', args=['exp2b']), {
+        bad = self.client.post(reverse('setting_project', args=['exp2']), {
             'name': 'exp2b', 'use_extra2': 'on', 'complete_button_text': 'x', 'complete_button_url': 'javascript:alert(1)',
         })
         self.assertEqual(bad.status_code, 200)
         self.assertContains(bad, '項目名を入力してください')
         self.assertContains(bad, 'https:// で始まるURL')
-        self.assertContains(bad, 'href="/setting/home/exp2b/appointments"')
+        self.assertContains(bad, 'href="/setting/home/exp2/appointments"')
 
         response = self.client.post(reverse('setting_home'), {'action': 'delete', 'id': project.pk})
         self.assertFalse(Project.objects.exists())
