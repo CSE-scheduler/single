@@ -12,11 +12,13 @@ urlpatterns = [
     path('setting/home/<str:project>', setting_views.project_edit, name='setting_project'),
     path('setting/home/<str:project>/appointments', setting_views.appointments, name='setting_appointments'),
     path('setting/home/<str:project>/slots', setting_views.toggle_slots, name='setting_slots'),
+    path('setting/home/<str:project>/week', setting_views.week, name='setting_week'),
 
     # ---- 参加者用（プロジェクトごと） ----
     path('<str:project>/', views.consent, name='consent'),
     path('<str:project>/manual', views.manual, name='manual'),
     path('<str:project>/timeframe', views.timeframe, name='timeframe'),
+    path('<str:project>/week', views.week, name='week'),
     path('<str:project>/entry', views.entry, name='entry'),
     path('<str:project>/confirm', views.confirm, name='confirm'),
     path('<str:project>/complete', views.complete, name='complete'),

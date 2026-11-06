@@ -77,8 +77,45 @@ class ParticipantFlowTests(TestCase):
         response = self.client.get(reverse('timeframe', args=['exp-1']))
         self.assertContains(response, f'value="{tomorrow_slot(self.project, 10).pk}"')
         self.assertNotContains(response, f'value="{closed.pk}"')
-        self.assertContains(response, 'mark--reserved">済')
+        # 参加者には、受付停止も予約ありも「×」と見せる
+        self.assertNotContains(response, f'value="{tomorrow_slot(self.project, 11).pk}"')
+        self.assertNotContains(response, 'mark--reserved')
         self.assertContains(response, 'mark--closed">×')
+        self.assertNotContains(response, '・祝')
+
+    def test_period_limits_user_calendar(self):
+        self.project.time_start = datetime.time(10)
+        self.project.time_end = datetime.time(12)
+        self.project.save()
+        response = self.client.get(reverse('timeframe', args=['exp-1']))
+        self.assertContains(response, f'value="{tomorrow_slot(self.project, 10).pk}"')
+        self.assertNotContains(response, f'value="{tomorrow_slot(self.project, 9).pk}"')
+        self.assertNotContains(response, f'value="{tomorrow_slot(self.project, 12).pk}"')
+        self.assertContains(response, '<th class="time">11:30</th>')
+        self.assertNotContains(response, '<th class="time">12:00</th>')
+        # 期間外の枠は申し込めない
+        data = {'slot': tomorrow_slot(self.project, 9).pk, 'full_name': 'x', 'mail': 'a@example.com',
+                'data_reuse': 'no', 'extra4': 'no'}
+        response = self.client.post(reverse('confirm', args=['exp-1']), data)
+        self.assertContains(response, '申し訳ございません')
+
+    def test_week_loading(self):
+        from .calendar import user_week_starts
+        starts = user_week_starts(Project.objects.get(pk=self.project.pk))
+        self.assertEqual(starts[0], datetime.date.today())  # 今日が一番左
+        self.assertEqual(len(starts), 3)  # 初期値の募集期間（明日から2週間）
+        page = self.client.get(reverse('timeframe', args=['exp-1']))
+        self.assertEqual(page.content.decode().count('class="grid-wrap week"'), 1)  # 最初は1週間分だけ
+        response = self.client.get(reverse('week', args=['exp-1']) + f'?start={starts[1]}')
+        self.assertContains(response, 'class="grid-wrap week"')
+        self.assertEqual(self.client.get(reverse('week', args=['exp-1']) + '?start=2000-01-01').status_code, 404)
+
+    def test_header_shows_month_once(self):
+        from .calendar import user_week
+        project = Project.objects.get(pk=self.project.pk)
+        week = user_week(project, datetime.date(2026, 11, 28))
+        self.assertEqual(week['month'], '11月')
+        self.assertEqual([c['head'] for c in week['columns']], ['28', '29', '30', '12/1', '2', '3', '4'])
 
     def test_booking(self):
         slot = tomorrow_slot(self.project)
@@ -146,6 +183,9 @@ class SettingTests(TestCase):
         self.assertRedirects(response, reverse('setting_project', args=['exp2']))
         project = Project.objects.get(name='exp2')
         self.assertTrue(project.slots.exists())
+        today = datetime.date.today()
+        self.assertEqual(project.period_start, today + datetime.timedelta(days=1))
+        self.assertEqual(project.period_end, today + datetime.timedelta(days=14))
 
         bad = self.client.post(reverse('setting_home'), {'action': 'create', 'name': '日本語'})
         self.assertContains(bad, 'アルファベット')
@@ -179,6 +219,53 @@ class SettingTests(TestCase):
         response = self.client.post(reverse('setting_home'), {'action': 'delete', 'id': project.pk})
         self.assertFalse(Project.objects.exists())
         self.assertFalse(Slot.objects.exists())
+
+    def test_period_form(self):
+        login(self.client)
+        project = Project.objects.create(name='p1')
+        project.ensure_slots()
+        url = reverse('setting_project', args=['p1'])
+        later = datetime.date.today() + datetime.timedelta(days=200)
+        response = self.client.post(url, {'action': 'period', 'period_start': str(datetime.date.today()),
+                                          'period_end': str(later), 'time_start': '09:00', 'time_end': '18:00'})
+        self.assertRedirects(response, url)
+        project.refresh_from_db()
+        self.assertEqual((project.period_end, project.time_start, project.time_end),
+                         (later, datetime.time(9), datetime.time(18)))
+        self.assertTrue(project.slots.filter(start__date=later).exists())  # 90日より先の終了日でも枠を作る
+
+        bad = self.client.post(url, {'action': 'period', 'period_start': str(later), 'period_end': str(datetime.date.today()),
+                                     'time_start': '18:00', 'time_end': '09:00'})
+        self.assertContains(bad, '終了日は開始日より後にしてください')
+        self.assertContains(bad, '一番遅い時刻は')
+
+    def test_admin_states(self):
+        project = Project.objects.create(name='p2', period_start=datetime.date.today(),
+                                         time_start=datetime.time(9), time_end=datetime.time(18))
+        project.ensure_slots()
+        slot = tomorrow_slot(project, 10)
+        now = datetime.datetime.now()
+        self.assertEqual(slot.admin_state(now), 'open')
+        self.assertEqual(slot.admin_state(slot.start + datetime.timedelta(minutes=1)), 'none')  # 過ぎた枠
+        self.assertEqual(tomorrow_slot(project, 8).admin_state(now), 'none')  # 時間帯の外
+        r = Reservation.objects.create(slot=slot)
+        slot = Slot.objects.select_related('reservation').get(pk=slot.pk)
+        self.assertEqual(slot.admin_state(slot.start + datetime.timedelta(hours=1)), 'reserved')  # 予約は過ぎても残す
+        r.paid = True
+        r.save()
+        slot = Slot.objects.select_related('reservation').get(pk=slot.pk)
+        self.assertEqual(slot.admin_state(now), 'paid')
+
+        login(self.client)
+        page = self.client.get(reverse('setting_project', args=['p2']))
+        self.assertContains(page, 'mark--paid')
+        response = self.client.post(reverse('setting_slots', args=['p2']), {'ids': [tomorrow_slot(project, 8).pk]})
+        self.assertEqual(response.json()['states'], {})  # 期間外は切り替えない
+        from .calendar import admin_week_starts
+        starts, index = admin_week_starts(project)
+        self.assertEqual(starts[index], datetime.date.today())
+        week = self.client.get(reverse('setting_week', args=['p2']) + f'?start={starts[index + 1]}')
+        self.assertContains(week, 'class="grid-wrap week"')
 
     def test_toggle_slots(self):
         login(self.client)

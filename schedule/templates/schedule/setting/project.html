@@ -59,10 +59,6 @@
         opacity: 0.5;
     }
 
-    .grid a.mark--reserved {
-        color: var(--secondary) !important;
-        text-decoration: none !important;
-    }
 
     .grid button.toggle-all {
         width: 100%;
@@ -109,6 +105,44 @@
         flex-wrap: wrap;
         gap: 24px;
         padding: 4px 0;
+    }
+
+    .period-form {
+        display: flex;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 16px;
+        padding: 16px 20px;
+        margin-bottom: 8px;
+        background-color: var(--primary-hover);
+        border-radius: var(--border-radius-base);
+    }
+
+    .period-form .form-group {
+        width: auto;
+        margin: 0;
+    }
+
+    .period-form button {
+        margin-top: 26px;
+    }
+
+    .period-form select {
+        padding: 6px 8px;
+        font: inherit;
+        border: 2px solid var(--gray-light);
+        border-radius: 4px;
+        background-color: var(--white);
+    }
+
+    .grid a.mark--paid {
+        color: var(--secondary) !important;
+        text-decoration: none !important;
+    }
+
+    .grid a.mark--reserved {
+        color: var(--primary) !important;
+        text-decoration: none !important;
     }
 
     .manual-current {
@@ -170,48 +204,55 @@
         <a class="button" href="{% url 'setting_appointments' project.name %}">予約一覧（{{ n_reservations }}件）</a>
     </div>
 
-    <!-- ===== 予約状況カレンダー ===== -->
+    <!-- ===== 募集期間と予約状況カレンダー ===== -->
     <div class="section">
+        <h3>募集期間</h3>
+        <form method="post" class="period-form" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="period">
+            <div class="form-group">
+                <label for="id_period_start">開始日</label>
+                <input type="date" name="period_start" id="id_period_start" value="{{ period_form.period_start.value|date:'Y-m-d'|default:period_form.period_start.value|default:'' }}" required>
+                {{ period_form.period_start.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_period_end">終了日</label>
+                <input type="date" name="period_end" id="id_period_end" value="{{ period_form.period_end.value|date:'Y-m-d'|default:period_form.period_end.value|default:'' }}" required>
+                {{ period_form.period_end.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_time_start">一番早い時刻</label>
+                <select name="time_start" id="id_time_start">
+                    {% for value, label in time_choices|slice:":-1" %}<option value="{{ value }}" {% if value == period_form.time_start.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                {{ period_form.time_start.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_time_end">一番遅い時刻</label>
+                <select name="time_end" id="id_time_end">
+                    {% for value, label in time_choices|slice:"1:" %}<option value="{{ value }}" {% if value == period_form.time_end.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                {{ period_form.time_end.errors }}
+            </div>
+            <button type="submit">期間を保存</button>
+        </form>
+        <p class="note">参加者にはこの期間の日付と時間帯だけを見せます（一番遅い時刻は、最後の枠が終わる時刻です。例：18:00 なら最後の枠は 17:30〜18:00）。期間外の枠は下のカレンダーで「-」になります。</p>
+
         <h3>予約状況カレンダー</h3>
-        <p class="note">マスを押すと、受付（◯）と受付停止（×）が切り替わり、すぐに保存されます。日付や時刻の見出しを押すと、その列・行をまとめて切り替えます（予約が入っている枠は変わりません）。「済」を押すとその日の予約一覧を開きます。</p>
+        <p class="note">マスを押すと、受付（◯）と受付停止（×）が切り替わり、すぐに保存されます。日付や時刻の見出しを押すと、その列・行をまとめて切り替えます。「予」「済」を押すとその日の予約一覧を開きます。</p>
         <div class="legend">
             <span><span class="mark mark--open">◯</span>受付中</span>
             <span><span class="mark mark--closed">×</span>受付停止（こちらで止めた枠）</span>
-            <span><span class="mark mark--reserved">済</span>予約あり</span>
+            <span><span class="mark mark--reserved">予</span>予約あり</span>
+            <span><span class="mark mark--paid">済</span>謝金支払い済み</span>
+            <span><span class="mark mark--none">-</span>募集期間外・過ぎた枠（切り替えできません）</span>
         </div>
+        <p class="note">参加者の画面では、◯以外はすべて「×」と表示されます。</p>
         {% include 'schedule/_week_nav.html' %}
-        {% for week in weeks %}
-        <div class="grid-wrap week" data-title="{{ week.title }}" hidden>
-            <table class="grid">
-                <thead>
-                    <tr>
-                        <th class="time"></th>
-                        {% for column in week.columns %}
-                        <th class="{{ column.kind }}"><button type="button" class="toggle-all" data-scope="column" title="この日をまとめて切り替える">{{ column.label }}<span class="day-name">({{ column.day_name }})</span></button></th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in week.rows %}
-                    <tr>
-                        <th class="time"><button type="button" class="toggle-all" data-scope="row" title="この時刻をまとめて切り替える">{{ row.time }}</button></th>
-                        {% for slot in row.cells %}
-                        <td>
-                            {% if not slot %}
-                            <span class="mark">-</span>
-                            {% elif slot.state == 'reserved' %}
-                            <a class="mark mark--reserved" href="{% url 'setting_appointments' project.name %}?from={{ slot.start|date:'Y-m-d' }}&to={{ slot.start|date:'Y-m-d' }}" title="{{ slot.reservation.full_name }}">済</a>
-                            {% else %}
-                            <button type="button" class="cell mark mark--{{ slot.state }}" data-id="{{ slot.pk }}" title="{{ slot.label }}">{% if slot.state == 'open' %}◯{% else %}×{% endif %}</button>
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        {{ starts|json_script:"week-starts" }}
+        <div id="week-area" data-url="{% url 'setting_week' project.name %}" data-index="{{ index }}">
+            {% include 'schedule/setting/_admin_week.html' %}
         </div>
-        {% endfor %}
     </div>
 
     <form method="post" enctype="multipart/form-data" novalidate>
@@ -350,7 +391,7 @@
 {% block script %}
 {% include 'schedule/_weeks_script.html' %}
 <script>
-    showWeek(0);
+    showWeek(current);
 
     function copyUrl(button) {
         navigator.clipboard.writeText(document.getElementById('participant-url').textContent).then(() => {
@@ -387,21 +428,23 @@
         }
     }
 
-    document.querySelectorAll('.grid button.cell').forEach((cell) => {
-        cell.addEventListener('click', () => toggle([cell]));
-    });
-
-    document.querySelectorAll('.grid button.toggle-all').forEach((button) => {
-        button.addEventListener('click', () => {
+    // あとから読み込んだ週のマスでも押せるように、表全体で受け取る
+    weekArea.addEventListener('click', (event) => {
+        const cell = event.target.closest('button.cell');
+        if (cell) {
+            toggle([cell]);
+            return;
+        }
+        const button = event.target.closest('button.toggle-all');
+        if (!button) return;
+        if (button.dataset.scope === 'row') {
+            toggle(Array.from(button.closest('tr').querySelectorAll('button.cell')));
+        } else {
             const table = button.closest('table');
-            if (button.dataset.scope === 'row') {
-                toggle(Array.from(button.closest('tr').querySelectorAll('button.cell')));
-            } else {
-                const index = button.closest('th').cellIndex;
-                const cells = Array.from(table.tBodies[0].rows).map((row) => row.cells[index].querySelector('button.cell'));
-                toggle(cells.filter(Boolean));
-            }
-        });
+            const index = button.closest('th').cellIndex;
+            const cells = Array.from(table.tBodies[0].rows).map((row) => row.cells[index].querySelector('button.cell'));
+            toggle(cells.filter(Boolean));
+        }
     });
 </script>
 {% endblock %}

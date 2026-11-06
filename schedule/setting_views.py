@@ -8,14 +8,14 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password
 from django.db.models import Count, Q
-from django.http import HttpResponseNotAllowed, JsonResponse
+from django.http import Http404, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .calendar import build_weeks
-from .forms import TITLE_FIELDS, NewProjectForm, ProjectForm
+from .calendar import admin_week, admin_week_starts
+from .forms import TIME_CHOICES, TITLE_FIELDS, NewProjectForm, PeriodForm, ProjectForm
 from .models import PROJECT_NAME_SYMBOLS, Project, Reservation, Slot
 
 SESSION_KEY = 'schedule_admin'
@@ -91,15 +91,25 @@ def project_edit(request, project):
     project.ensure_slots()
     # フォームの検証に失敗すると project.name が入力値に変わってしまうので、URLには元の名前を使う
     url_name = project.name
-    if request.method == 'POST':
+    form = ProjectForm(instance=project)
+    period_form = PeriodForm(instance=project)
+    if request.method == 'POST' and request.POST.get('action') == 'period':
+        period_form = PeriodForm(request.POST, instance=project)
+        if period_form.is_valid():
+            project = period_form.save()
+            project.ensure_slots()
+            messages.success(request, '募集期間を保存しました。')
+            return redirect('setting_project', project.name)
+        messages.error(request, '募集期間の入力に誤りがあります。')
+        project = Project.objects.get(pk=project.pk)
+        form = ProjectForm(instance=project)
+    elif request.method == 'POST':
         form = ProjectForm(request.POST, request.FILES, instance=project)
         if form.is_valid():
             project = form.save()
             messages.success(request, '設定を保存しました。')
             return redirect('setting_project', project.name)
         messages.error(request, '入力に誤りがあります。赤字の部分を確認してください。')
-    else:
-        form = ProjectForm(instance=project)
 
     fields = []
     for field in project.fields(only_used=False):
@@ -110,12 +120,18 @@ def project_edit(request, project):
         })
 
     stored = Project.objects.get(pk=project.pk)  # カレンダーと説明書は保存済みの内容を出す
+    # カレンダーは最初は今日の週だけを作り、ほかの週は「前の週・次の週」を押したときに読み込む
+    starts, index = admin_week_starts(stored)
     return render(request, 'schedule/setting/project.html', {
         'project': stored,
         'url_name': url_name,
         'form': form,
+        'period_form': period_form,
+        'time_choices': TIME_CHOICES,
         'fields': fields,
-        'weeks': build_weeks(stored, datetime.date.today(), stored.slots_until),
+        'starts': [d.isoformat() for d in starts],
+        'index': index,
+        'week': admin_week(stored, starts[index]),
         'n_reservations': Reservation.objects.filter(slot__project=stored).count(),
         'symbols': PROJECT_NAME_SYMBOLS,
         'participant_url': request.build_absolute_uri(reverse('consent', args=[stored.name])),
@@ -123,12 +139,30 @@ def project_edit(request, project):
 
 
 @admin_required
+def week(request, project):
+    """カレンダーで「前の週・次の週」を押したときに読み込む1週間分の表"""
+    project = get_object_or_404(Project, name=project)
+    try:
+        first = datetime.date.fromisoformat(request.GET.get('start', ''))
+    except ValueError:
+        raise Http404
+    if first not in admin_week_starts(project)[0]:
+        raise Http404
+    return render(request, 'schedule/setting/_admin_week.html', {'project': project, 'week': admin_week(project, first)})
+
+
+@admin_required
 @require_POST
 def toggle_slots(request, project):
-    """カレンダーのマス（または1日分・1時刻分）の受付を切り替える。予約が入っている枠は変えない"""
+    """カレンダーのマス（または1日分・1時刻分）の受付を切り替える。
+    予約が入っている枠・今より前の枠・募集期間外の枠（「-」）は変えない"""
     project = get_object_or_404(Project, name=project)
     ids = [int(i) for i in request.POST.getlist('ids') if i.isdigit()]
-    slots = list(Slot.objects.filter(project=project, pk__in=ids, reservation__isnull=True))
+    now = datetime.datetime.now()
+    slots = [
+        s for s in Slot.objects.filter(project=project, pk__in=ids, reservation__isnull=True, start__gte=now)
+        if project.in_period(s.start)
+    ]
     # 1つでも受付中の枠があれば全部止める。全部止まっていれば全部再開する
     close = any(not s.closed for s in slots)
     Slot.objects.filter(pk__in=[s.pk for s in slots]).update(closed=close)

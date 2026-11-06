@@ -1,0 +1,29 @@
+<div class="grid-wrap week" data-start="{{ week.start }}" data-title="{{ week.title }}">
+    <table class="grid">
+        <thead>
+            <tr>
+                <th class="time month">{{ week.month }}</th>
+                {% for column in week.columns %}
+                <th class="{{ column.kind }}">{{ column.head }}<span class="day-name">({{ column.day_name }})</span></th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in week.rows %}
+            <tr>
+                <th class="time">{{ row.time }}</th>
+                {% for cell in row.cells %}
+                <td>
+                    {% if cell %}
+                    <input type="radio" name="slot" value="{{ cell.slot.pk }}" id="slot{{ cell.slot.pk }}" data-label="{{ cell.label }}" {% if cell.checked %}checked{% endif %}>
+                    <label for="slot{{ cell.slot.pk }}">◯</label>
+                    {% else %}
+                    <span class="mark mark--closed">×</span>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

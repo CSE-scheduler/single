@@ -302,7 +302,7 @@ input[type="checkbox"] {
     color: var(--alert);
 }
 
-/* マスの記号：◯ 予約できる／× 受付停止（実験者が止めた）／済 予約が入っている */
+/* マスの記号：◯ 受付中／× 受付停止／予 予約あり／済 謝金支払い済み／- 募集期間外・過ぎた枠 */
 .mark {
     display: block;
     padding: 6px 0;
@@ -318,10 +318,28 @@ input[type="checkbox"] {
 }
 
 .mark--reserved {
+    color: var(--primary);
+    background-color: var(--primary-selected);
+    font-size: var(--font-small);
+    font-weight: var(--weight-bold);
+}
+
+.mark--paid {
     color: var(--secondary);
     background-color: var(--secondary-background);
     font-size: var(--font-small);
     font-weight: var(--weight-bold);
+}
+
+.mark--none {
+    color: #A9AEB4;
+}
+
+/* 表の左上のセル（月） */
+.grid thead th.month {
+    font-size: var(--font-medium-small);
+    font-weight: var(--weight-bold);
+    color: var(--text);
 }
 
 .legend .mark {

@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .calendar import build_weeks
+from .calendar import user_week, user_week_starts
 from .forms import reservation_form, reservation_values
 from .mail import send_confirmation
 from .models import Project, Reservation, Slot
@@ -21,11 +21,6 @@ def _project(name):
 
 def _session_key(project):
     return f'schedule_reservation_{project.pk}'
-
-
-def _bookable(slot):
-    # 予約を受け付けるのは明日から
-    return slot.state == 'open' and slot.start.date() > datetime.date.today()
 
 
 def consent(request, project):
@@ -44,13 +39,32 @@ def manual(request, project):
 
 def timeframe(request, project):
     project = _project(project)
-    first = datetime.date.today() + datetime.timedelta(days=1)
+    starts = user_week_starts(project)
+    selected = request.POST.get('slot', '') or request.GET.get('slot', '')
+    # 最初は1週間分だけ作る。入力画面から戻ってきたときは、選んでいた日時の週を開く
+    index = 0
+    slot = _get_slot(project, selected)
+    if slot and starts:
+        index = min(max((slot.start.date() - starts[0]).days // 7, 0), len(starts) - 1)
     params = {
         'project': project,
-        'weeks': build_weeks(project, first, project.slots_until),
-        'selected': request.POST.get('slot', '') or request.GET.get('slot', ''),
+        'starts': [d.isoformat() for d in starts],
+        'index': index,
+        'week': user_week(project, starts[index], selected) if starts else None,
     }
     return render(request, 'schedule/timeframe.html', params)
+
+
+def week(request, project):
+    """日時選択で「前の週・次の週」を押したときに読み込む1週間分の表"""
+    project = get_object_or_404(Project, name=project)
+    try:
+        first = datetime.date.fromisoformat(request.GET.get('start', ''))
+    except ValueError:
+        raise Http404
+    if first not in user_week_starts(project):
+        raise Http404
+    return render(request, 'schedule/_user_week.html', {'week': user_week(project, first)})
 
 
 def _get_slot(project, slot_id):
@@ -93,11 +107,12 @@ def confirm(request, project):
                 slot = Slot.objects.select_for_update().get(project=project, pk=int(request.POST.get('slot', '')))
             except (Slot.DoesNotExist, ValueError):
                 return redirect('timeframe', project.name)
+            slot.project = project
             existing = Reservation.objects.filter(slot=slot).first()
             # 申し込みボタンの二度押しや再読み込みは、同じ人の予約としてそのまま完了画面を出す
             if existing and existing.pk == request.session.get(key):
                 return redirect('complete', project.name)
-            if existing or not _bookable(slot):
+            if existing or not slot.bookable(datetime.date.today()):
                 return _message(request, project, '申し訳ございません',
                                 'この日時は予約できなくなりました。お手数ですが、日時を選択しなおしてください。')
             reservation = Reservation.objects.create(slot=slot, **reservation_values(form))

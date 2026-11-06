@@ -1,0 +1,30 @@
+<div class="grid-wrap week" data-start="{{ week.start }}" data-title="{{ week.title }}">
+    <table class="grid">
+        <thead>
+            <tr>
+                <th class="time month">{{ week.month }}</th>
+                {% for column in week.columns %}
+                <th class="{{ column.kind }}"><button type="button" class="toggle-all" data-scope="column" title="この日をまとめて切り替える">{{ column.head }}<span class="day-name">({{ column.day_name }})</span></button></th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in week.rows %}
+            <tr>
+                <th class="time"><button type="button" class="toggle-all" data-scope="row" title="この時刻をまとめて切り替える">{{ row.time }}</button></th>
+                {% for cell in row.cells %}
+                <td>
+                    {% if cell.state == 'open' or cell.state == 'closed' %}
+                    <button type="button" class="cell mark mark--{{ cell.state }}" data-id="{{ cell.slot.pk }}" title="{{ cell.slot.label }}">{% if cell.state == 'open' %}◯{% else %}×{% endif %}</button>
+                    {% elif cell.state == 'reserved' or cell.state == 'paid' %}
+                    <a class="mark mark--{{ cell.state }}" href="{% url 'setting_appointments' project.name %}?from={{ cell.slot.start|date:'Y-m-d' }}&to={{ cell.slot.start|date:'Y-m-d' }}" title="{{ cell.slot.reservation.full_name }}">{% if cell.state == 'paid' %}済{% else %}予{% endif %}</a>
+                    {% else %}
+                    <span class="mark mark--none">-</span>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

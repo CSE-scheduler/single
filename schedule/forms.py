@@ -1,8 +1,9 @@
+import datetime
 import os
 
 from django import forms
 
-from .models import FIELDS, SEX_CHOICES, Project, validate_project_name
+from .models import FIELDS, SEX_CHOICES, TIME_OPTIONS, Project, validate_project_name
 
 # 説明書としてアップロードできるファイル（拡張子 → 配信するときの種類）
 MANUAL_TYPES = {
@@ -25,6 +26,39 @@ class NewProjectForm(forms.Form):
         if Project.objects.filter(name=name).exists():
             raise forms.ValidationError('同じ名前のプロジェクトがすでにあります。')
         return name
+
+
+TIME_CHOICES = [(f'{t:%H:%M}', f'{t:%-H:%M}') for t in TIME_OPTIONS]
+# 募集終了日は、今日から1年後まで（枠を作りすぎないように）
+MAX_PERIOD_DAYS = 365
+
+
+class PeriodForm(forms.ModelForm):
+    time_start = forms.TypedChoiceField(choices=TIME_CHOICES[:-1], coerce=lambda v: datetime.time.fromisoformat(v))
+    time_end = forms.TypedChoiceField(choices=TIME_CHOICES[1:], coerce=lambda v: datetime.time.fromisoformat(v))
+
+    class Meta:
+        model = Project
+        fields = ['period_start', 'period_end', 'time_start', 'time_end']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.initial['time_start'] = f'{self.instance.time_start:%H:%M}'
+            self.initial['time_end'] = f'{self.instance.time_end:%H:%M}'
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get('period_start'), cleaned.get('period_end')
+        if start and end:
+            if start > end:
+                self.add_error('period_end', '終了日は開始日より後にしてください。')
+            elif end > datetime.date.today() + datetime.timedelta(days=MAX_PERIOD_DAYS):
+                self.add_error('period_end', '終了日は今日から1年以内にしてください。')
+        t_start, t_end = cleaned.get('time_start'), cleaned.get('time_end')
+        if t_start and t_end and t_start >= t_end:
+            self.add_error('time_end', '一番遅い時刻は、一番早い時刻より後にしてください。')
+        return cleaned
 
 
 class ProjectForm(forms.ModelForm):

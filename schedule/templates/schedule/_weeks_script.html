@@ -1,14 +1,55 @@
 <script>
-    // 7日ごとのページ（.week）を「前の週・次の週」で切り替える
-    const weeks = document.querySelectorAll('.week');
-    let current = 0;
+    // 日時の表を1週間ずつ表示する。最初はページに入っている週だけで、ほかの週は必要になったときに読み込む
+    const weekArea = document.getElementById('week-area');
+    const weekStarts = JSON.parse(document.getElementById('week-starts').textContent);
+    const weekEls = {};
+    const weekLoading = {};
+    let current = Number(weekArea.dataset.index);
+    weekArea.querySelectorAll('.week').forEach((el) => { weekEls[el.dataset.start] = el; });
 
-    function showWeek(index) {
-        if (index < 0 || index >= weeks.length) return;
-        weeks.forEach((week, i) => { week.hidden = i !== index; });
+    function loadWeek(index) {
+        const start = weekStarts[index];
+        if (weekEls[start]) return Promise.resolve(weekEls[start]);
+        if (!weekLoading[start]) {
+            weekLoading[start] = fetch(weekArea.dataset.url + '?start=' + start, { headers: { 'X-Requested-With': 'fetch' } })
+                .then((response) => {
+                    if (!response.ok) throw new Error();
+                    return response.text();
+                })
+                .then((html) => {
+                    const template = document.createElement('template');
+                    template.innerHTML = html.trim();
+                    const el = template.content.firstElementChild;
+                    el.hidden = true;
+                    weekArea.appendChild(el);
+                    weekEls[start] = el;
+                    return el;
+                })
+                .finally(() => { delete weekLoading[start]; });
+        }
+        return weekLoading[start];
+    }
+
+    async function showWeek(index) {
+        if (index < 0 || index >= weekStarts.length) return;
         current = index;
-        document.getElementById('week-title').textContent = weeks[index].dataset.title;
         document.getElementById('prev').disabled = index === 0;
-        document.getElementById('next').disabled = index === weeks.length - 1;
+        document.getElementById('next').disabled = index === weekStarts.length - 1;
+        const title = document.getElementById('week-title');
+        if (!weekEls[weekStarts[index]]) title.textContent = '読み込み中…';
+        try {
+            const el = await loadWeek(index);
+            if (current !== index) return;  // 読み込み中に別の週が押されたとき
+            Object.values(weekEls).forEach((week) => { week.hidden = week !== el; });
+            title.textContent = el.dataset.title;
+        } catch (error) {
+            title.textContent = '';
+            alert('読み込めませんでした。画面を読み込みなおしてください。');
+            return;
+        }
+        // 前後の週を先に読み込んでおき、押したときにすぐ表示できるようにする
+        [index + 1, index - 1].forEach((i) => {
+            if (i >= 0 && i < weekStarts.length) loadWeek(i).catch(() => {});
+        });
     }
 </script>

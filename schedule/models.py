@@ -1,7 +1,6 @@
 import datetime
 import re
 
-import jpholiday
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.safestring import mark_safe
@@ -16,6 +15,22 @@ SLOT_MINUTES = 30
 N_SLOTS = 30
 
 DAY_NAMES = ['月', '火', '水', '木', '金', '土', '日']
+
+# 募集期間の時刻として選べるもの（8:00〜23:00の30分ごと）
+TIME_OPTIONS = [
+    (datetime.datetime.combine(datetime.date.today(), datetime.time(START_HOUR))
+     + datetime.timedelta(minutes=SLOT_MINUTES * i)).time()
+    for i in range(N_SLOTS + 1)
+]
+
+
+def default_period_start():
+    # 募集期間の初期値：プロジェクトを作った次の日から2週間
+    return datetime.date.today() + datetime.timedelta(days=1)
+
+
+def default_period_end():
+    return datetime.date.today() + datetime.timedelta(days=14)
 
 
 # ---- プロジェクト名 ----
@@ -91,6 +106,12 @@ class Project(models.Model):
     # この日までの枠を作ってある（毎回枠を数えなくて済むように覚えておく）
     slots_until = models.DateField(null=True, blank=True, editable=False)
 
+    # 募集期間（参加者に見せる日付と時間帯）。期間外の枠は予約できない
+    period_start = models.DateField('募集開始日', default=default_period_start)
+    period_end = models.DateField('募集終了日', default=default_period_end)
+    time_start = models.TimeField('一番早い時刻', default=datetime.time(START_HOUR))
+    time_end = models.TimeField('一番遅い時刻', default=datetime.time(23))
+
     # 最初の画面（同意画面）
     consent_text = models.TextField('最初の画面の文言', blank=True, default=DEFAULT_CONSENT_TEXT)
     # 説明書はデータベースに入れる（サーバーのファイルを気にせず、MySQL・SQLiteのどちらでも使える）
@@ -158,10 +179,16 @@ class Project(models.Model):
     def complete_html(self, date_text):
         return _html(self.complete_text.replace('{日時}', date_text))
 
+    def in_period(self, start):
+        """この時刻に始まる枠が募集期間（日付と時間帯）の中か"""
+        return (self.period_start <= start.date() <= self.period_end
+                and self.time_start <= start.time() < self.time_end)
+
     def ensure_slots(self, today=None):
-        """今日から DAYS_AHEAD 日後までの枠をそろえる。すでにある枠（受付停止・予約）はそのまま"""
+        """今日から DAYS_AHEAD 日後（募集終了日がもっと先ならその日）までの枠をそろえる。
+        すでにある枠（受付停止・予約）はそのまま"""
         today = today or datetime.date.today()
-        last = today + datetime.timedelta(days=DAYS_AHEAD)
+        last = max(today + datetime.timedelta(days=DAYS_AHEAD), self.period_end)
         if self.slots_until and self.slots_until >= last:
             return
         first = today
@@ -197,14 +224,10 @@ class Slot(models.Model):
     def end(self):
         return self.start + datetime.timedelta(minutes=SLOT_MINUTES)
 
-    @property
-    def is_holiday(self):
-        return bool(jpholiday.is_holiday(self.start.date()))
-
     def label(self, with_year=False):
         # 例：「11月5日(木) 10:30〜11:00」
         day = self.start.date()
-        day_name = DAY_NAMES[day.weekday()] + ('・祝' if self.is_holiday else '')
+        day_name = DAY_NAMES[day.weekday()]
         year = f'{day.year}年' if with_year else ''
         return f'{year}{day.month}月{day.day}日({day_name}) {self.start:%-H:%M}〜{self.end:%-H:%M}'
 
@@ -215,12 +238,19 @@ class Slot(models.Model):
         except Reservation.DoesNotExist:
             return False
 
-    @property
-    def state(self):
-        # open：予約できる（◯）、closed：実験者が受付を止めた（×）、reserved：予約が入っている（済）
+    def admin_state(self, now):
+        """設定画面での表示。open：◯（受付中）、closed：×（受付停止）、reserved：予（予約あり）、
+        paid：済（謝金支払い済み）、none：-（今より前、または募集期間外。切り替えられない）"""
         if self.reserved:
-            return 'reserved'
+            return 'paid' if self.reservation.paid else 'reserved'
+        if self.start < now or not self.project.in_period(self.start):
+            return 'none'
         return 'closed' if self.closed else 'open'
+
+    def bookable(self, today):
+        """参加者が予約できるか（明日以降・募集期間内・受付中・予約なし）"""
+        return (not self.reserved and not self.closed and self.start.date() > today
+                and self.project.in_period(self.start))
 
 
 class Reservation(models.Model):

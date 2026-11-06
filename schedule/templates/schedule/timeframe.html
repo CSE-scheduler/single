@@ -43,51 +43,18 @@
 <div class="main_text">
     <h2>日時の選択</h2>
 
-    {% if weeks %}
+    {% if week %}
     <div class="legend">
         <span><span class="mark mark--open">◯</span>予約できます</span>
-        <span><span class="mark mark--closed">×</span>受付をしていません</span>
-        <span><span class="mark mark--reserved">済</span>予約が入っています</span>
+        <span><span class="mark mark--closed">×</span>予約できません</span>
     </div>
     <form method="post" action="{% url 'entry' project.name %}">
         {% csrf_token %}
         {% include 'schedule/_week_nav.html' %}
-
-        {% for week in weeks %}
-        <div class="grid-wrap week" data-title="{{ week.title }}" hidden>
-            <table class="grid">
-                <thead>
-                    <tr>
-                        <th class="time"></th>
-                        {% for column in week.columns %}
-                        <th class="{{ column.kind }}">{{ column.label }}<span class="day-name">({{ column.day_name }})</span></th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in week.rows %}
-                    <tr>
-                        <th class="time">{{ row.time }}</th>
-                        {% for slot in row.cells %}
-                        <td>
-                            {% if not slot %}
-                            <span class="mark mark--closed">×</span>
-                            {% elif slot.state == 'open' %}
-                            <input type="radio" name="slot" value="{{ slot.pk }}" id="slot{{ slot.pk }}" data-label="{{ slot.label }}" {% if slot.pk|stringformat:"d" == selected %}checked{% endif %}>
-                            <label for="slot{{ slot.pk }}">◯</label>
-                            {% elif slot.state == 'reserved' %}
-                            <span class="mark mark--reserved">済</span>
-                            {% else %}
-                            <span class="mark mark--closed">×</span>
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        {{ starts|json_script:"week-starts" }}
+        <div id="week-area" data-url="{% url 'week' project.name %}" data-index="{{ index }}">
+            {% include 'schedule/_user_week.html' %}
         </div>
-        {% endfor %}
 
         <div class="selected-area">
             <div class="selected-date selected-date--empty" id="selected-date">ご希望の日時を選択してください</div>
@@ -104,6 +71,7 @@
 {% endblock %}
 
 {% block script %}
+{% if week %}
 {% include 'schedule/_weeks_script.html' %}
 <script>
     function showSelected() {
@@ -115,12 +83,12 @@
         document.getElementById('submit').disabled = false;
     }
 
-    if (weeks.length) {
-        document.querySelectorAll('input[name="slot"]').forEach((input) => input.addEventListener('change', showSelected));
-        // 入力画面から戻ってきたときは、選んでいた日時の週を開く
-        const checked = document.querySelector('input[name="slot"]:checked');
-        showWeek(checked ? Array.from(weeks).indexOf(checked.closest('.week')) : 0);
-        showSelected();
-    }
+    // あとから読み込んだ週のマスでも選べるように、表全体で受け取る
+    weekArea.addEventListener('change', (event) => {
+        if (event.target.name === 'slot') showSelected();
+    });
+    showWeek(current);
+    showSelected();
 </script>
+{% endif %}
 {% endblock %}
