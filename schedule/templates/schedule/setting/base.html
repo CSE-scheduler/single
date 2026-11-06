@@ -100,19 +100,16 @@
         font-size: var(--font-medium-small);
         font-weight: var(--weight-bold);
         white-space: nowrap;
-        color: var(--primary);
+        color: var(--text);
     }
 
+    /* 丸だけ色をつける（公開中は青、停止中はグレー） */
     .status-badge::before {
         content: '';
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background-color: currentColor;
-    }
-
-    .status-badge.is-stopped {
-        color: var(--gray-dark);
+        background-color: var(--primary);
     }
 
     .status-badge.is-stopped::before {
