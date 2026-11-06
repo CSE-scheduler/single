@@ -7,7 +7,7 @@ from urllib.parse import quote, urlencode
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.http import Http404, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -76,12 +76,7 @@ def home(request):
             messages.success(request, f'プロジェクト「{project.name}」を作成しました。文言や取得する項目を設定してください。')
             return redirect('setting_project', project.name)
 
-    today_start = datetime.datetime.combine(datetime.date.today(), datetime.time())
-    projects = Project.objects.annotate(
-        n_reservations=Count('slots__reservation'),
-        n_upcoming=Count('slots__reservation', filter=Q(slots__start__gte=today_start)),
-        n_paid=Count('slots__reservation', filter=Q(slots__reservation__status='paid')),
-    )
+    projects = Project.objects.annotate(n_reservations=Count('slots__reservation'))
     projects = list(projects)
     for project in projects:
         project.recruit_url = request.build_absolute_uri(reverse('consent', args=[project.name]))
@@ -119,6 +114,18 @@ def project_edit(request, project):
         messages.error(request, '入力に誤りがあります。')
         project = Project.objects.get(pk=project.pk)
         form = ProjectForm(instance=project)
+    elif request.method == 'POST' and request.POST.get('action') == 'publish':
+        # 公開する・停止する。停止するときは、最初の画面に出す文言も受け取る
+        project.published = request.POST.get('published') == '1'
+        fields = ['published']
+        if not project.published:
+            message = request.POST.get('closed_message', '').strip()
+            if not message:
+                return JsonResponse({'ok': False, 'errors': {'closed_message': ['表示する文言を入力してください。']}})
+            project.closed_message = message
+            fields.append('closed_message')
+        project.save(update_fields=fields)
+        return JsonResponse({'ok': True, 'reload': True})
     elif request.method == 'POST' and request.POST.get('action') == 'manual':
         # 説明書のアップロード（モーダルから）。表示を新しくするため、保存したら画面を読みなおす
         manual_form = ManualForm(request.POST, request.FILES)
@@ -165,7 +172,11 @@ def project_edit(request, project):
         'starts': [d.isoformat() for d in starts],
         'index': index,
         'week': admin_week(stored, starts[index]),
-        'n_reservations': Reservation.objects.filter(slot__project=stored).count(),
+        'stats': Reservation.objects.filter(slot__project=stored).aggregate(
+            total=Count('pk'),
+            upcoming=Count('pk', filter=Q(slot__start__gte=datetime.datetime.combine(datetime.date.today(), datetime.time()))),
+            paid=Count('pk', filter=Q(status='paid')),
+        ),
         'participant_url': request.build_absolute_uri(reverse('consent', args=[stored.name])),
         # local_settings.py に送信用のGmailを書いていないと、メールは送られない
         'mail_ready': bool(settings.EMAIL_HOST_PASSWORD),
@@ -201,14 +212,6 @@ def toggle_slots(request, project):
     return JsonResponse({'states': {s.pk: 'closed' if close else 'open' for s in slots}})
 
 
-SORTS = {
-    'date': ['slot__start'],
-    '-date': ['-slot__start'],
-    'full_name': ['full_name', 'slot__start'],
-    '-full_name': ['-full_name', 'slot__start'],
-}
-
-
 def _parse_date(value):
     try:
         return datetime.date.fromisoformat(value)
@@ -239,51 +242,61 @@ def appointments(request, project):
             return redirect(f'{url}?{query}' if query else url)
         return HttpResponseNotAllowed(['POST'])
 
+    fields = project.fields()
+    # どの列でも並べ替えられる（同じ列をもう一度押すと逆順）。同じ値どうしは日時の順
+    sort_fields = {'date': 'slot__start', 'status': 'status_order', **{f['key']: f['key'] for f in fields}}
     sort = request.GET.get('sort', 'date')
-    if sort not in SORTS:
+    if sort.lstrip('-') not in sort_fields:
         sort = 'date'
+    order = ('-' if sort.startswith('-') else '') + sort_fields[sort.lstrip('-')]
     date_from = _parse_date(request.GET.get('from'))
     date_to = _parse_date(request.GET.get('to'))
+    # ステータスは複数選んで絞り込める（何も選ばなければすべて）
+    valid = dict(RESERVATION_STATUSES)
+    selected = [v for v in request.GET.getlist('status') if v in valid]
 
-    reservations = Reservation.objects.filter(slot__project=project).select_related('slot')
+    reservations = Reservation.objects.filter(slot__project=project).select_related('slot').annotate(
+        # ステータスは選択肢の順（予約済み → 実施済み → …）に並べる
+        status_order=Case(*[When(status=k, then=Value(i)) for i, (k, _) in enumerate(RESERVATION_STATUSES)],
+                          output_field=IntegerField()),
+    )
     if date_from:
         reservations = reservations.filter(slot__start__gte=datetime.datetime.combine(date_from, datetime.time()))
     if date_to:
         end = datetime.datetime.combine(date_to + datetime.timedelta(days=1), datetime.time())
         reservations = reservations.filter(slot__start__lt=end)
-    reservations = reservations.order_by(*SORTS[sort])
+    if selected:
+        reservations = reservations.filter(status__in=selected)
+    reservations = reservations.order_by(order, 'slot__start')
 
-    fields = project.fields()
     rows = [
         {'obj': r, 'date': r.label(with_year=True), 'values': [r.display(f['key']) for f in fields]}
         for r in reservations
     ]
 
-    # 列見出しを押したときの並べ替え（同じ列をもう一度押すと逆順）
+    filters = [(k, v) for k, v in (('from', request.GET.get('from', '')), ('to', request.GET.get('to', ''))) if v]
+    filters += [('status', v) for v in selected]
+
     def sort_link(key):
         new = f'-{key}' if sort == key else key
-        params = {k: v for k, v in (('from', request.GET.get('from', '')), ('to', request.GET.get('to', ''))) if v}
-        params['sort'] = new
-        return '?' + urlencode(params)
+        return '?' + urlencode(filters + [('sort', new)])
 
     def sort_mark(key):
         return '▲' if sort == key else ('▼' if sort == f'-{key}' else '')
 
-    sortable = {'full_name'}
-    columns = [
-        {**f, 'sort_link': sort_link(f['key']) if f['key'] in sortable else None,
-         'sort_mark': sort_mark(f['key']) if f['key'] in sortable else ''}
-        for f in fields
-    ]
+    columns = [{**f, 'sort_link': sort_link(f['key']), 'sort_mark': sort_mark(f['key'])} for f in fields]
 
     return render(request, 'schedule/setting/appointments.html', {
         'project': project,
         'columns': columns,
         'rows': rows,
         'statuses': RESERVATION_STATUSES,
-        'counts': [(label, sum(1 for r in rows if r['obj'].status == key)) for key, label in RESERVATION_STATUSES],
+        'selected_statuses': selected,
+        'filtered': bool(date_from or date_to or selected),
         'date_sort_link': sort_link('date'),
         'date_sort_mark': sort_mark('date'),
+        'status_sort_link': sort_link('status'),
+        'status_sort_mark': sort_mark('status'),
         'sort': sort,
         'date_from': request.GET.get('from', '') if date_from else '',
         'date_to': request.GET.get('to', '') if date_to else '',

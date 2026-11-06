@@ -119,6 +119,9 @@ DEFAULT_COMPLETE_TEXT = (
     '当日はどうぞよろしくお願いいたします。'
 )
 
+# 停止中のプロジェクトの最初の画面に出す文言
+DEFAULT_CLOSED_MESSAGE = '本実験の募集は終了いたしました。\nご協力いただきありがとうございました。'
+
 DEFAULT_MAIL_SUBJECT = '【実験】ご予約の確認'
 DEFAULT_MAIL_BODY = (
     '{氏名} 様\n\n'
@@ -187,6 +190,10 @@ class Project(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     # この日までの枠を作ってある（毎回枠を数えなくて済むように覚えておく）
     slots_until = models.DateField(null=True, blank=True, editable=False)
+
+    # 公開中（True）・停止中（False）。停止中は、最初の画面に closed_message を出して予約を受け付けない
+    published = models.BooleanField('公開中', default=True)
+    closed_message = models.TextField('停止中に出す文言', blank=True, default=DEFAULT_CLOSED_MESSAGE)
 
     # 募集期間（参加者に見せる日付と時間帯）。期間外の枠は予約できない
     period_start = models.DateField('募集開始日', default=default_period_start)
@@ -273,6 +280,13 @@ class Project(models.Model):
                 'header': self.field_title(key) if editable else label,
             })
         return result
+
+    def closed_html(self):
+        return _paragraphs(self.closed_message)
+
+    @property
+    def status_label(self):
+        return '公開中' if self.published else '停止中'
 
     def consent_html(self):
         return _paragraphs(self.consent_text)

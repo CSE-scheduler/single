@@ -15,6 +15,9 @@
 {% endblock %}
 
 {% block content %}
+{% if not project.published %}
+<div class="main_text">{{ project.closed_html }}</div>
+{% else %}
 <div class="main_text">
     {% if project.consent_title %}<h2>{{ project.consent_title }}</h2>{% endif %}
     {{ project.consent_html }}
@@ -28,6 +31,7 @@
     {% endif %}
 </div>
 {% if project.manual_data %}<p class="note">※「説明書を読む」を押すと「次へ進む」が押せるようになります。</p>{% endif %}
+{% endif %}
 {% endblock %}
 
 {% block script %}

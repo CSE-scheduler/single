@@ -376,15 +376,15 @@ select:disabled {
 /* 実施済み（謝金未払い）：黄色 */
 .mark--done {
     color: #8A6500;
-    background-color: #FFF8DD;
+    background-color: #FFFDE6;
     font-size: var(--font-small);
     font-weight: var(--weight-bold);
 }
 
-/* No Show：濃い灰色 */
+/* No Show：灰色 */
 .mark--no_show {
     color: var(--white);
-    background-color: var(--gray-dark);
+    background-color: #bbbbbb;
     font-size: var(--font-small);
     font-weight: var(--weight-bold);
 }

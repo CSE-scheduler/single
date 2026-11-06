@@ -3,19 +3,49 @@
 {% block page_title %}{{ project.name }}{% endblock %}
 
 {% block admin_style %}
-    .participant-url {
+    /* タイトルの行：プロジェクト名・公開中/停止中・募集ページのURL・コピー（左に詰める）と、停止する/公開するボタン（右） */
+    .page-head {
+        align-items: center;
+    }
+
+    .title-line {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 8px 16px;
+        min-width: 0;
+    }
+
+    .title-line h2 {
+        margin: 0 !important;
+    }
+
+    .recruit {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
         font-size: var(--font-medium-small);
     }
 
-    .participant-url code {
-        padding: 2px 8px;
-        background-color: var(--primary-hover);
+    /* 参加者数などの人数（demogameの分析画面と同じ形）と、予約一覧へのリンク */
+    .stats {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .stats > div {
+        padding: 12px 20px;
+        border: 1px solid var(--gray-light);
         border-radius: 4px;
-        word-break: break-all;
+    }
+
+    .stats strong {
+        font-size: 20px;
+        margin-left: 8px;
     }
 
     .section {
@@ -24,8 +54,14 @@
         border-top: 1px solid var(--gray-light);
     }
 
-    .section:first-of-type {
-        margin-top: 24px;
+    .section--first {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+    }
+
+    .modal textarea {
+        width: 100%;
     }
 
     .section > h3 {
@@ -175,33 +211,6 @@
         color: var(--gray-medium);
     }
 
-    /* 自動保存の結果（右下に少しだけ出す） */
-    .save-status {
-        position: fixed;
-        right: 24px;
-        bottom: 24px;
-        z-index: 10;
-        padding: 10px 16px;
-        border-radius: var(--border-radius-base);
-        background-color: var(--primary);
-        color: var(--white);
-        font-size: var(--font-medium-small);
-        box-shadow: var(--shadow-large);
-        opacity: 0;
-        transform: translateY(8px);
-        transition: opacity 0.2s, transform 0.2s;
-        pointer-events: none;
-    }
-
-    .save-status.is-shown {
-        opacity: 1;
-        transform: none;
-    }
-
-    .save-status.is-error {
-        background-color: var(--alert);
-    }
-
     /* 予約が入っている枠（ステータスごとの色は schedule.css） */
     .grid a.mark {
         text-decoration: none !important;
@@ -232,25 +241,35 @@
 
 {% endblock %}
 
-{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ {{ project.name }}{% endblock %}
+{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a>{% include 'schedule/icons/chevron_right.html' %}{{ project.name }}{% endblock %}
 
 {% block admin_content %}
 <div class="main_text main_text--wide">
     <div class="page-head">
-        <div>
+        <div class="title-line">
             <h2>{{ project.name }}</h2>
-            <div class="participant-url">
-                募集ページ：<code id="participant-url">{{ participant_url }}</code>
-                <button type="button" class="button--sub button--small" onclick="copyUrl(this)">コピー</button>
-                <a href="{% url 'consent' project.name %}" target="_blank" rel="noopener">開く</a>
-            </div>
+            <span class="status-badge{% if not project.published %} is-stopped{% endif %}">{{ project.status_label }}</span>
+            <span class="recruit">
+                <a href="{{ participant_url }}" target="_blank" rel="noopener">{{ participant_url }}</a>
+                <button type="button" class="button--sub copy-button" data-url="{{ participant_url }}" title="URLをコピー" aria-label="URLをコピー">{% include 'schedule/icons/copy.html' %}</button>
+            </span>
         </div>
-        <a class="button" href="{% url 'setting_appointments' project.name %}">予約一覧（{{ n_reservations }}件）</a>
+        {% if project.published %}
+        <button type="button" class="button--danger" id="stop-button">停止する</button>
+        {% else %}
+        <button type="button" id="publish-button">公開する</button>
+        {% endif %}
+    </div>
+
+    <div class="stats">
+        <div>参加者数<strong>{{ stats.total }}</strong></div>
+        <div>今日以降の予約<strong>{{ stats.upcoming }}</strong></div>
+        <div>支払い済み<strong>{{ stats.paid }}</strong></div>
+        <a class="button button--sub" href="{% url 'setting_appointments' project.name %}">参加者一覧へ</a>
     </div>
 
     <!-- ===== 募集期間と予約状況カレンダー ===== -->
-    <div class="section">
-        <h3>募集予約カレンダー</h3>
+    <div class="section section--first">
         <form method="post" class="calendar-settings autosave" id="period-form" novalidate>
             {% csrf_token %}
             <input type="hidden" name="action" value="period">
@@ -303,13 +322,13 @@
         <p class="note">クリックで受付（◯）と受付停止（×）を切り替えられます。日付や時刻を押すと、その列・行をまとめて切り替えられます。</p>
         <div class="legend">
             <span><span class="mark mark--open">◯</span>受付中</span>
-            <span><span class="mark mark--closed">×</span>受付停止（こちらで止めた枠）</span>
+            <span><span class="mark mark--closed">×</span>受付停止</span>
             <span><span class="mark mark--reserved">予</span>予約済み</span>
             <span><span class="mark mark--done">未</span>実施済み（謝金未払い）</span>
             <span><span class="mark mark--paid">済</span>謝金支払い済み</span>
             <span><span class="mark mark--no_show">N</span>No Show</span>
             <span><span class="mark mark--test">テ</span>テスト用</span>
-            <span><span class="mark mark--none">-</span>募集期間外・締め切った枠（切り替えできません）</span>
+            <span><span class="mark mark--none">-</span>募集対象外</span>
         </div>
         {% include 'schedule/_week_nav.html' %}
         {{ starts|json_script:"week-starts" }}
@@ -333,7 +352,6 @@
             <div class="form-group">
                 <label for="id_consent_text">本文</label>
                 <textarea name="consent_text" id="id_consent_text" rows="8">{{ form.consent_text.value|default:'' }}</textarea>
-                {% include 'schedule/setting/_body_note.html' %}
                 {{ form.consent_text.errors }}
             </div>
             <div class="form-group">
@@ -366,7 +384,7 @@
                             <td class="center"><input type="checkbox" name="{{ field.use.html_name }}" id="{{ field.use.id_for_label }}" aria-label="{{ field.label }}を取得する" {% if field.use.value %}checked{% endif %}></td>
                             <td>
                                 {% if field.title_field %}
-                                <input type="text" name="{{ field.title_field.html_name }}" maxlength="500" aria-label="{{ field.label }}の項目名" value="{{ field.title_field.value|default:'' }}" placeholder="{{ field.label }}（例：{% if field.kind == 'bool' %}過去に同様の実験に参加したことがありますか{% else %}学部・学年{% endif %}）">
+                                <input type="text" name="{{ field.title_field.html_name }}" data-kind="{% if field.kind == 'bool' %}はい／いいえ{% else %}自由記述{% endif %}" maxlength="500" aria-label="{{ field.label }}の項目名" value="{{ field.title_field.value|default:'' }}" placeholder="{{ field.label }}（例：{% if field.kind == 'bool' %}過去に同様の実験に参加したことがありますか{% else %}学部・学年{% endif %}）">
                                 {{ field.title_field.errors }}
                                 {% else %}
                                 <label for="{{ field.use.id_for_label }}">{{ field.title }}</label>
@@ -398,7 +416,6 @@
             <div class="form-group">
                 <label for="id_complete_text">本文</label>
                 <textarea name="complete_text" id="id_complete_text" class="highlight" data-placeholders='["{日時}"]' rows="6">{{ form.complete_text.value|default:'' }}</textarea>
-                {% include 'schedule/setting/_body_note.html' %}
                 <p class="note"><span class="placeholder">{日時}</span> と書いたところは、予約した日時（例：2026年11月5日(木) 10:30〜11:00）に置き換わります。</p>
                 {{ form.complete_text.errors }}
             </div>
@@ -460,12 +477,6 @@
                     {{ form.mail_cancel_body.errors }}
                 </div>
 
-                <p class="note">タイトルと本文では、次の文字が置き換わります。
-                    <span class="placeholder">{日時}</span> 予約した日時、
-                    <span class="placeholder">{氏名}</span> 入力された氏名、
-                    <span class="placeholder">{返信用メールアドレス}</span> 上で入力したアドレス、
-                    <span class="placeholder">{キャンセル用URL}</span> その予約の変更・キャンセルのページのURL（予約ごとに違います。確認メールだけで使えます）。</p>
-                <p class="note">文字だけのメールとして送ります。https:// で始まるURLをそのまま書けば、ほとんどのメールアプリでリンクになります。URLは1行に単独で書いてください。</p>
             </fieldset>
         </div>
 
@@ -491,6 +502,46 @@
     </form>
 </dialog>
 
+<!-- 停止するときに、最初の画面に出す文言を入れてもらうモーダル -->
+<dialog class="modal" id="stop-modal" aria-labelledby="stop-modal-title">
+    <div class="modal__head">
+        <h3 id="stop-modal-title">募集を停止する</h3>
+        <button type="button" class="modal__close" data-close aria-label="閉じる">{% include 'schedule/icons/close.html' %}</button>
+    </div>
+    <form id="stop-form" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="publish">
+        <input type="hidden" name="published" value="0">
+        <div class="form-group">
+            <label for="id_closed_message">最初の画面に表示する文言</label>
+            <textarea name="closed_message" id="id_closed_message" rows="4">{{ project.closed_message }}</textarea>
+            <p class="note">停止中は日時の選択に進めなくなり、この文言だけが表示されます（1行ずつ段落になります）。</p>
+        </div>
+        <div class="button-group">
+            <button type="submit" class="button--danger">停止する</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- その他1〜6を取得するときに、項目名を入れてもらうモーダル -->
+<dialog class="modal" id="extra-modal" aria-labelledby="extra-modal-title">
+    <div class="modal__head">
+        <h3 id="extra-modal-title">項目名を入力</h3>
+        <button type="button" class="modal__close" data-close aria-label="閉じる">{% include 'schedule/icons/close.html' %}</button>
+    </div>
+    <form id="extra-form" novalidate>
+        <div class="form-group">
+            <label for="extra-modal-title-input">入力画面に出す項目名（必須）</label>
+            <input type="text" id="extra-modal-title-input" maxlength="500">
+            <p class="note" id="extra-modal-kind"></p>
+            <ul class="errorlist" id="extra-modal-error" hidden><li>項目名を入力してください。</li></ul>
+        </div>
+        <div class="button-group">
+            <button type="submit">取得する</button>
+        </div>
+    </form>
+</dialog>
+
 <!-- 説明書をアップロードするモーダル -->
 <dialog class="modal" id="manual-modal" aria-labelledby="manual-modal-title">
     <div class="modal__head">
@@ -510,20 +561,12 @@
         </div>
     </form>
 </dialog>
-<div class="save-status" id="save-status" role="status" aria-live="polite"></div>
 {% endblock %}
 
 {% block script %}
 {% include 'schedule/_weeks_script.html' %}
 <script>
     showWeek(current);
-
-    function copyUrl(button) {
-        navigator.clipboard.writeText(document.getElementById('participant-url').textContent).then(() => {
-            button.textContent = 'コピーしました';
-            setTimeout(() => { button.textContent = 'コピー'; }, 1500);
-        });
-    }
 
     async function toggle(cells) {
         cells = cells.filter((cell) => !cell.disabled);
@@ -554,17 +597,6 @@
     }
 
     // ---- 自動保存：入力したらその場で保存する ----
-    const saveStatus = document.getElementById('save-status');
-    let saveStatusTimer;
-
-    function showSaveStatus(text, isError) {
-        saveStatus.textContent = text;
-        saveStatus.classList.toggle('is-error', !!isError);
-        saveStatus.classList.add('is-shown');
-        clearTimeout(saveStatusTimer);
-        saveStatusTimer = setTimeout(() => saveStatus.classList.remove('is-shown'), isError ? 5000 : 1500);
-    }
-
     function showErrors(form, errors) {
         form.querySelectorAll('.errorlist').forEach((el) => el.remove());
         Object.entries(errors || {}).forEach(([name, messages]) => {
@@ -715,6 +747,80 @@
             showErrors(manualForm, { manual: ['アップロードできませんでした。通信状態を確かめてください。'] });
         }
         button.disabled = false;
+    });
+
+    // ---- 公開する・停止する ----
+    async function postAction(form) {
+        const response = await fetch(location.pathname, {
+            method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: new FormData(form),
+        });
+        return response.json();
+    }
+    const stopButton = document.getElementById('stop-button');
+    if (stopButton) {
+        stopButton.addEventListener('click', () => {
+            document.querySelectorAll('#stop-form .errorlist').forEach((el) => el.remove());
+            document.getElementById('stop-modal').showModal();
+        });
+        document.getElementById('stop-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            try {
+                const result = await postAction(event.target);
+                if (result.ok) location.reload();
+                else showErrors(event.target, result.errors);
+            } catch (error) {
+                showSaveStatus('停止できませんでした。通信状態を確かめてください。', true);
+            }
+        });
+    }
+    const publishButton = document.getElementById('publish-button');
+    if (publishButton) {
+        publishButton.addEventListener('click', async () => {
+            const body = new FormData();
+            body.append('action', 'publish');
+            body.append('published', '1');
+            body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            const response = await fetch(location.pathname, { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body });
+            if (response.ok) location.reload();
+            else showSaveStatus('公開できませんでした。', true);
+        });
+    }
+
+    // ---- その他1〜6：取得するにチェックを入れるときは、モーダルで項目名を入れてもらう ----
+    const extraModal = document.getElementById('extra-modal');
+    const extraInput = document.getElementById('extra-modal-title-input');
+    const extraError = document.getElementById('extra-modal-error');
+    let extraTarget = null;  // [チェックボックス, 項目名の欄]
+
+    document.querySelectorAll('.fields-table tr').forEach((row) => {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        const title = row.querySelector('input[name^="title_extra"]');
+        if (!checkbox || !title) return;
+        checkbox.addEventListener('click', (event) => {
+            if (!checkbox.checked) return;  // 外すときはそのまま保存する
+            event.preventDefault();
+            extraTarget = [checkbox, title];
+            extraInput.value = title.value;
+            extraInput.placeholder = title.placeholder;
+            document.getElementById('extra-modal-kind').textContent = '回答の形式：' + title.dataset.kind;
+            extraError.hidden = true;
+            extraModal.showModal();
+            extraInput.focus();
+        });
+    });
+    document.getElementById('extra-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const value = extraInput.value.trim();
+        if (!value) {
+            extraError.hidden = false;
+            extraInput.focus();
+            return;
+        }
+        const [checkbox, title] = extraTarget;
+        title.value = value;
+        checkbox.checked = true;
+        extraModal.close();
+        save(settingsForm);
     });
 
     // ---- 置き換わる文字（{日時} {氏名} など）を入力欄の中で目立たせる ----

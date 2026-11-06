@@ -21,9 +21,9 @@
         table-layout: fixed;
     }
 
-    .projects .col-name { width: 18%; }
-    .projects .col-count { width: 8%; }
-    .projects .col-paid { width: 11%; }
+    .projects .col-name { width: 22%; }
+    .projects .col-status { width: 112px; }
+    .projects .col-count { width: 96px; }
     .projects .col-delete { width: 96px; }
 
     .projects th, .projects td {
@@ -41,6 +41,10 @@
         word-break: break-all;
     }
 
+    .count-link {
+        font-weight: var(--weight-bold);
+    }
+
     /* 募集ページのURLとコピーボタン */
     .recruit {
         display: flex;
@@ -54,13 +58,6 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-    }
-
-    .copy-button {
-        flex: 0 0 auto;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
     }
 
     /* 行のどこを押してもプロジェクトの編集画面を開く */
@@ -88,18 +85,16 @@
         <table class="table projects">
             <colgroup>
                 <col class="col-name">
+                <col class="col-status">
                 <col class="col-count">
-                <col class="col-count">
-                <col class="col-paid">
                 <col>
                 <col class="col-delete">
             </colgroup>
             <thead>
                 <tr>
                     <th>プロジェクト名</th>
-                    <th class="right">予約数</th>
-                    <th class="right">今日以降</th>
-                    <th class="right">謝金支払い済み</th>
+                    <th>ステータス</th>
+                    <th class="right">参加者数</th>
                     <th>募集ページ</th>
                     <th class="right"></th>
                 </tr>
@@ -107,14 +102,13 @@
             <tbody>
                 {% for project in projects %}
                 <tr class="row-link" data-href="{% url 'setting_project' project.name %}" tabindex="0">
-                    <td><span class="project-name">{{ project.name }}</span></td>
-                    <td class="right">{{ project.n_reservations }}</td>
-                    <td class="right">{{ project.n_upcoming }}</td>
-                    <td class="right">{{ project.n_paid }}</td>
+                    <td><a class="project-name" href="{% url 'setting_project' project.name %}">{{ project.name }}</a></td>
+                    <td><span class="status-badge{% if not project.published %} is-stopped{% endif %}">{{ project.status_label }}</span></td>
+                    <td class="right"><a class="count-link" href="{% url 'setting_appointments' project.name %}" title="予約一覧">{{ project.n_reservations }}</a></td>
                     <td>
                         <div class="recruit">
                             <a href="{{ project.recruit_url }}" target="_blank" rel="noopener">{{ project.recruit_url }}</a>
-                            <button type="button" class="button--sub button--small copy-button" data-url="{{ project.recruit_url }}">{% include 'schedule/icons/copy.html' %}<span>コピー</span></button>
+                            <button type="button" class="button--sub copy-button" data-url="{{ project.recruit_url }}" title="URLをコピー" aria-label="URLをコピー">{% include 'schedule/icons/copy.html' %}</button>
                         </div>
                     </td>
                     <td class="right">
@@ -127,7 +121,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6">まだプロジェクトはありません。「新規プロジェクト作成」から作成してください。</td></tr>
+                <tr><td colspan="5">まだプロジェクトはありません。「新規プロジェクト作成」から作成してください。</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -170,17 +164,6 @@
     // モーダルの外側（暗いところ）を押したら閉じる
     dialog.addEventListener('click', (event) => {
         if (event.target === dialog) dialog.close();
-    });
-
-    // 募集ページのURLをコピーする
-    document.querySelectorAll('.copy-button').forEach((button) => {
-        button.addEventListener('click', () => {
-            navigator.clipboard.writeText(button.dataset.url).then(() => {
-                const label = button.querySelector('span');
-                label.textContent = 'コピーしました';
-                setTimeout(() => { label.textContent = 'コピー'; }, 1500);
-            });
-        });
     });
 
     // 行を押すと編集画面へ（リンク・コピー・削除を押したときは除く）

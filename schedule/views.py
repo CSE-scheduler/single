@@ -21,6 +21,11 @@ def _project(name):
     return project
 
 
+def _closed(project):
+    """停止中のプロジェクトでは予約・日時の変更を受け付けず、最初の画面（停止中の文言）に戻す"""
+    return None if project.published else redirect('consent', project.name)
+
+
 def _session_key(project):
     return f'schedule_reservation_{project.pk}'
 
@@ -79,13 +84,16 @@ def _timeframe_page(request, project, changing=None):
 # 日時選択と入力の画面はブラウザに保存させない（「戻る」でも最新の空き状況を出す）
 @never_cache
 def timeframe(request, project):
-    return _timeframe_page(request, _project(project))
+    project = _project(project)
+    return _closed(project) or _timeframe_page(request, project)
 
 
 @never_cache
 def week(request, project):
     """日時選択で「前の週・次の週」を押したときに読み込む1週間分の表"""
     project = get_object_or_404(Project, name=project)
+    if not project.published:
+        raise Http404
     try:
         first = datetime.date.fromisoformat(request.GET.get('start', ''))
     except ValueError:
@@ -108,6 +116,8 @@ def _get_slot(project, slot_id):
 @never_cache
 def entry(request, project, form=None):
     project = _project(project)
+    if not project.published:
+        return redirect('consent', project.name)
     slot = _get_slot(project, request.POST.get('slot') or request.GET.get('slot'))
     if slot is None:
         return redirect('timeframe', project.name)
@@ -130,7 +140,7 @@ def _message(request, project, title, message):
 
 def confirm(request, project):
     project = _project(project)
-    if request.method != 'POST':
+    if not project.published or request.method != 'POST':
         return redirect('timeframe', project.name)
 
     form = reservation_form(project, request.POST)
@@ -213,7 +223,7 @@ def change(request, project, token):
     project = _project(project)
     reservation = _reservation(project, token)
     manage_url = reverse('manage', args=[project.name, token])
-    if not _editable(reservation):
+    if not _editable(reservation) or not project.published:
         return redirect(manage_url)
     if request.method != 'POST':
         return _timeframe_page(request, project, changing=reservation)

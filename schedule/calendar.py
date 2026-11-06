@@ -180,7 +180,9 @@ def admin_week(project, first, now=None):
             'label': f'{t.month}月{t.day}日 {t:%-H:%M}',
         }
 
-    return _week(project, first, ALL_TIMES, cell, now)
+    # 募集期間の時間帯（例：9:00〜21:00）の行だけ出す
+    times = [t for t in ALL_TIMES if project.time_start <= t < project.time_end]
+    return _week(project, first, times, cell, now)
 
 
 def toggleable(project, slots, now=None):

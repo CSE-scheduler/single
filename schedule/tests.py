@@ -534,6 +534,17 @@ class SettingTests(TestCase):
         r1.refresh_from_db()
         self.assertEqual(r1.status, 'no_show')
 
+        # ステータスで絞り込む（複数選べる）・件数の見出し・ステータスでも並べ替えられる
+        page = self.client.get(url + '?status=no_show&status=paid')
+        self.assertContains(page, '1件の予約')
+        self.assertContains(page, 'Bさん')
+        self.assertNotContains(page, 'Aさん')
+        self.assertContains(self.client.get(url), '2件の予約')
+        content = self.client.get(url + '?sort=status').content.decode()
+        self.assertLess(content.index('Aさん'), content.index('Bさん'))  # 予約済み → No Show の順
+        content = self.client.get(url + '?sort=-sex').content.decode()  # どの列でも並べ替えられる
+        self.assertLess(content.index('Bさん'), content.index('Aさん'))
+
         response = self.client.post(url, {'action': 'delete', 'id': r2.pk, 'query': 'sort=-date'})
         self.assertRedirects(response, url + '?sort=-date')
         self.assertFalse(Reservation.objects.filter(pk=r2.pk).exists())
@@ -775,3 +786,50 @@ class PageTextTests(TestCase):
         migration = importlib.import_module('schedule.migrations.0007_titles_cancel_mail_bcc')
         title, body = migration.split('<h2>見出し</h2>\n<p>1行目</p>\n<p>2行目</p>')
         self.assertEqual((title, body), ('見出し', '1行目\n2行目'))
+
+
+@override_settings(SCHEDULE_ADMIN_PASSWORD_HASH=TEST_HASH)
+class PublishTests(TestCase):
+    """公開中・停止中"""
+
+    def setUp(self):
+        login(self.client)
+        self.project = Project.objects.create(name='pub', use_full_name=True, use_mail=False)
+        self.project.ensure_slots()
+        self.url = reverse('setting_project', args=['pub'])
+        self.fetch = {'HTTP_X_REQUESTED_WITH': 'fetch'}
+
+    def test_stop_and_publish(self):
+        self.assertTrue(self.project.published)  # 作ったときは公開中
+        bad = self.client.post(self.url, {'action': 'publish', 'published': '0', 'closed_message': ' '}, **self.fetch)
+        self.assertFalse(bad.json()['ok'])
+        self.client.post(self.url, {'action': 'publish', 'published': '0', 'closed_message': '募集は終了しました。'}, **self.fetch)
+        self.project.refresh_from_db()
+        self.assertFalse(self.project.published)
+        self.assertContains(self.client.get(self.url), '停止中')
+
+        # 停止中は文言だけを出し、日時の選択・申し込みはできない
+        consent = self.client.get(reverse('consent', args=['pub']))
+        self.assertContains(consent, '<p>募集は終了しました。</p>')
+        self.assertNotContains(consent, '次へ進む')
+        self.assertRedirects(self.client.get(reverse('timeframe', args=['pub'])), reverse('consent', args=['pub']))
+        slot = tomorrow_slot(self.project)
+        self.client.post(reverse('confirm', args=['pub']), {'slot': slot.pk, 'full_name': 'x'})
+        self.assertFalse(Reservation.objects.exists())
+
+        self.client.post(self.url, {'action': 'publish', 'published': '1'}, **self.fetch)
+        self.project.refresh_from_db()
+        self.assertTrue(self.project.published)
+        self.assertEqual(self.project.closed_message, '募集は終了しました。')  # 次に停止するときの初期値
+        self.assertContains(self.client.get(reverse('consent', args=['pub'])), '次へ進む')
+
+    def test_admin_calendar_shows_recruit_hours(self):
+        self.project.time_start = datetime.time(9)
+        self.project.time_end = datetime.time(12)
+        self.project.save()
+        page = self.client.get(self.url).content.decode()
+        page = page[page.index('id="week-area"'):]  # カレンダーの部分だけ見る
+        self.assertIn('>9:00<', page)
+        self.assertIn('>11:30<', page)
+        self.assertNotIn('>8:30<', page)
+        self.assertNotIn('>12:00<', page)

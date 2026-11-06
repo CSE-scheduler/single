@@ -19,9 +19,41 @@
         width: auto;
     }
 
-    .summary {
-        margin-bottom: 8px;
-        font-size: var(--font-medium-small);
+    .filter-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .count-title {
+        margin: 0 0 12px;
+    }
+
+    /* ステータスの絞り込み（複数選べる） */
+    .status-filter {
+        border: none;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+    }
+
+    .status-filter legend {
+        padding: 0;
+        margin-bottom: 4px;
+        font-weight: var(--weight-bold);
+    }
+
+    .status-filter .checkbox-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        padding: 6px 0;
+    }
+
+    .status-filter label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
     }
 
     .table th a {
@@ -60,19 +92,18 @@
 
     /* ステータスごとの色（カレンダーの記号と同じ） */
     .status-select[data-status="reserved"] { color: var(--primary); }
-    .status-select[data-status="done"] { color: #8A6500; background-color: #FFF8DD; }
+    .status-select[data-status="done"] { color: #8A6500; background-color: #FFFDE6; }
     .status-select[data-status="paid"] { color: var(--secondary); }
-    .status-select[data-status="no_show"] { color: var(--white); background-color: var(--gray-dark); }
+    .status-select[data-status="no_show"] { color: var(--white); background-color: #bbbbbb; }
     .status-select[data-status="test"] { color: var(--gray-dark); }
 {% endblock %}
 
-{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ <a href="{% url 'setting_project' project.name %}">{{ project.name }}</a> ＞ 予約一覧{% endblock %}
+{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a>{% include 'schedule/icons/chevron_right.html' %}<a href="{% url 'setting_project' project.name %}">{{ project.name }}</a>{% include 'schedule/icons/chevron_right.html' %}予約一覧{% endblock %}
 
 {% block admin_content %}
 <div class="main_text main_text--wide">
     <div class="page-head">
         <h2>予約一覧</h2>
-        <a class="button button--sub" href="{% url 'setting_project' project.name %}">プロジェクトの編集に戻る</a>
     </div>
 
     <form method="get" class="filter">
@@ -85,11 +116,21 @@
             <label for="to">期間（まで）</label>
             <input type="date" id="to" name="to" value="{{ date_to }}">
         </div>
-        <button type="submit">絞り込む</button>
-        {% if date_from or date_to %}<a class="button button--sub" href="?sort={{ sort }}">解除</a>{% endif %}
+        <fieldset class="status-filter">
+            <legend>ステータス</legend>
+            <div class="checkbox-row">
+                {% for value, label in statuses %}
+                <label><input type="checkbox" name="status" value="{{ value }}" {% if value in selected_statuses %}checked{% endif %}>{{ label }}</label>
+                {% endfor %}
+            </div>
+        </fieldset>
+        <div class="filter-buttons">
+            <button type="submit">絞り込む</button>
+            {% if filtered %}<a class="button button--sub" href="?sort={{ sort }}">解除</a>{% endif %}
+        </div>
     </form>
 
-    <p class="summary">{{ rows|length }}件（{% for label, count in counts %}{{ label }} {{ count }}件{% if not forloop.last %}・{% endif %}{% endfor %}）{% if date_from or date_to %}　期間：{{ date_from|default:'' }} 〜 {{ date_to|default:'' }}{% endif %}</p>
+    <h3 class="count-title">{{ rows|length }}件の予約</h3>
 
     <div class="table-wrap">
         <table class="table">
@@ -97,12 +138,9 @@
                 <tr>
                     <th><a href="{{ date_sort_link }}">日時 <span class="sort-mark">{{ date_sort_mark|default:'⇅' }}</span></a></th>
                     {% for column in columns %}
-                    <th>
-                        {% if column.sort_link %}<a href="{{ column.sort_link }}">{{ column.header }} <span class="sort-mark">{{ column.sort_mark|default:'⇅' }}</span></a>
-                        {% else %}{{ column.header }}{% endif %}
-                    </th>
+                    <th><a href="{{ column.sort_link }}">{{ column.header }} <span class="sort-mark">{{ column.sort_mark|default:'⇅' }}</span></a></th>
                     {% endfor %}
-                    <th>ステータス</th>
+                    <th><a href="{{ status_sort_link }}">ステータス <span class="sort-mark">{{ status_sort_mark|default:'⇅' }}</span></a></th>
                     <th class="right"></th>
                 </tr>
             </thead>

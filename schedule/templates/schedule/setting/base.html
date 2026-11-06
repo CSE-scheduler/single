@@ -9,10 +9,10 @@
         gap: 12px;
     }
 
-    /* 白い島の外の一番上の段：左にパンくずリスト、右にアイコン（高さ24px） */
+    /* 白い島の外の一番上の段：左にパンくずリスト、右にアイコン */
     .admin-header {
         width: min(1200px, 100%);
-        height: 24px;
+        height: 32px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -22,16 +22,21 @@
     .admin-header__icons {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
     }
 
-    /* アイコンのボタン（Iconify の Material Symbols、20px） */
+    /* ログアウトはフォームの中のボタンなので、フォームも並べて上下をそろえる */
+    .admin-header__icons form {
+        display: flex;
+    }
+
+    /* アイコンのボタン（Iconify の Material Symbols、24px） */
     .icon-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 24px;
-        height: 24px;
+        width: 32px;
+        height: 32px;
         padding: 0;
         border-radius: 4px;
         color: var(--primary);
@@ -43,16 +48,25 @@
     }
 
     .icon-button svg {
-        width: 20px;
-        height: 20px;
+        display: block;
+        width: 24px;
+        height: 24px;
     }
 
     .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        min-width: 0;
         font-size: var(--font-medium-small);
         color: var(--gray-dark);
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
+    }
+
+    .breadcrumb__sep {
+        flex: 0 0 auto;
+        color: var(--gray-dark);
     }
 
     .breadcrumb a {
@@ -78,6 +92,76 @@
         display: inline;
     }
 
+    /* 公開中・停止中（左に丸） */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: var(--font-medium-small);
+        font-weight: var(--weight-bold);
+        white-space: nowrap;
+        color: var(--primary);
+    }
+
+    .status-badge::before {
+        content: '';
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: currentColor;
+    }
+
+    .status-badge.is-stopped {
+        color: var(--gray-dark);
+    }
+
+    .status-badge.is-stopped::before {
+        background-color: #A9AEB4;
+    }
+
+    /* アイコンだけのコピーボタン */
+    .copy-button {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+    }
+
+    .copy-button svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* 右下に少しだけ出すお知らせ（保存しました・コピーしました） */
+    .save-status {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 10;
+        padding: 10px 16px;
+        border-radius: var(--border-radius-base);
+        background-color: var(--primary);
+        color: var(--white);
+        font-size: var(--font-medium-small);
+        box-shadow: var(--shadow-large);
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity 0.2s, transform 0.2s;
+        pointer-events: none;
+    }
+
+    .save-status.is-shown {
+        opacity: 1;
+        transform: none;
+    }
+
+    .save-status.is-error {
+        background-color: var(--alert);
+    }
+
     {% block admin_style %}{% endblock %}
 {% endblock %}
 
@@ -100,4 +184,28 @@
 </ul>
 {% endif %}
 {% block admin_content %}{% endblock %}
+<div class="save-status" id="save-status" role="status" aria-live="polite"></div>
+<script>
+    // 右下のお知らせ（保存しました・コピーしました など）
+    const saveStatus = document.getElementById('save-status');
+    let saveStatusTimer;
+
+    function showSaveStatus(text, isError) {
+        saveStatus.textContent = text;
+        saveStatus.classList.toggle('is-error', !!isError);
+        saveStatus.classList.add('is-shown');
+        clearTimeout(saveStatusTimer);
+        saveStatusTimer = setTimeout(() => saveStatus.classList.remove('is-shown'), isError ? 5000 : 1500);
+    }
+
+    // 募集ページのURLをコピーする（data-url を持つ .copy-button）
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('.copy-button');
+        if (!button) return;
+        navigator.clipboard.writeText(button.dataset.url).then(
+            () => showSaveStatus('コピーしました'),
+            () => showSaveStatus('コピーできませんでした', true),
+        );
+    });
+</script>
 {% endblock %}
