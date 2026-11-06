@@ -1,0 +1,153 @@
+{% extends 'schedule/setting/base.html' %}
+
+{% block page_title %}予約一覧 - {{ project.name }}{% endblock %}
+
+{% block admin_style %}
+    .filter {
+        display: flex;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+        background-color: var(--primary-hover);
+        border-radius: var(--border-radius-base);
+    }
+
+    .filter .form-group {
+        margin: 0;
+        width: auto;
+    }
+
+    .summary {
+        margin-bottom: 8px;
+        font-size: var(--font-medium-small);
+    }
+
+    .table th a {
+        color: inherit !important;
+        text-decoration: none !important;
+        white-space: nowrap;
+    }
+
+    .table th a:hover {
+        color: var(--primary) !important;
+    }
+
+    .sort-mark {
+        font-size: var(--font-small);
+        color: var(--primary);
+    }
+
+    .table td {
+        white-space: nowrap;
+    }
+
+    .table td.long {
+        min-width: 160px;
+        white-space: pre-wrap;
+    }
+
+    .table td.date {
+        white-space: nowrap;
+    }
+
+    tr.paid td {
+        color: var(--gray-dark);
+    }
+{% endblock %}
+
+{% block admin_content %}
+<div class="main_text main_text--wide">
+    <div class="breadcrumb"><a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ <a href="{% url 'setting_project' project.name %}">{{ project.name }}</a> ＞ 予約一覧</div>
+    <div class="page-head">
+        <h2>予約一覧</h2>
+        <a class="button button--sub" href="{% url 'setting_project' project.name %}">プロジェクトの編集に戻る</a>
+    </div>
+
+    <form method="get" class="filter">
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <div class="form-group">
+            <label for="from">期間（から）</label>
+            <input type="date" id="from" name="from" value="{{ date_from }}">
+        </div>
+        <div class="form-group">
+            <label for="to">期間（まで）</label>
+            <input type="date" id="to" name="to" value="{{ date_to }}">
+        </div>
+        <button type="submit">絞り込む</button>
+        {% if date_from or date_to %}<a class="button button--sub" href="?sort={{ sort }}">解除</a>{% endif %}
+    </form>
+
+    <p class="summary">{{ rows|length }}件（謝金支払い済み <span id="n-paid">{{ n_paid }}</span>件）{% if date_from or date_to %}　期間：{{ date_from|default:'' }} 〜 {{ date_to|default:'' }}{% endif %}</p>
+
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th><a href="{{ date_sort_link }}">日時 <span class="sort-mark">{{ date_sort_mark|default:'⇅' }}</span></a></th>
+                    {% for column in columns %}
+                    <th>
+                        {% if column.sort_link %}<a href="{{ column.sort_link }}">{{ column.title }} <span class="sort-mark">{{ column.sort_mark|default:'⇅' }}</span></a>
+                        {% else %}{{ column.title }}{% endif %}
+                    </th>
+                    {% endfor %}
+                    <th class="center">謝金支払い済み</th>
+                    <th class="right"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="{% if row.obj.paid %}paid{% endif %}">
+                    <td class="date">{{ row.date }}</td>
+                    {% for value in row.values %}
+                    <td class="{% if value|length > 20 %}long{% endif %}">{{ value }}</td>
+                    {% endfor %}
+                    <td class="center"><input type="checkbox" class="paid-check" data-id="{{ row.obj.pk }}" {% if row.obj.paid %}checked{% endif %} aria-label="謝金支払い済み"></td>
+                    <td class="right">
+                        <form class="inline-form" method="post" onsubmit="return confirm('{{ row.date|escapejs }} の予約を削除します。元に戻せません。よろしいですか？')">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="id" value="{{ row.obj.pk }}">
+                            <input type="hidden" name="query" value="{{ query }}">
+                            <button type="submit" class="button--danger button--small">削除</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="{{ columns|length|add:3 }}">予約はありません。</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    document.querySelectorAll('.paid-check').forEach((check) => {
+        check.addEventListener('change', async () => {
+            const body = new URLSearchParams({ action: 'paid', id: check.dataset.id, paid: check.checked ? '1' : '0' });
+            check.disabled = true;
+            try {
+                const response = await fetch(location.pathname, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'fetch' },
+                    body,
+                });
+                if (!response.ok) throw new Error();
+                const data = await response.json();
+                check.checked = data.paid;
+                check.closest('tr').classList.toggle('paid', data.paid);
+                const counter = document.getElementById('n-paid');
+                counter.textContent = document.querySelectorAll('.paid-check:checked').length;
+            } catch (error) {
+                check.checked = !check.checked;
+                alert('保存できませんでした。画面を読み込みなおしてください。');
+            } finally {
+                check.disabled = false;
+            }
+        });
+    });
+</script>
+{% endblock %}

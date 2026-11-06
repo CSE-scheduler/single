@@ -1,0 +1,49 @@
+{% extends 'schedule/base.html' %}
+
+{% block style %}
+    .date {
+        font-size: var(--font-medium);
+        font-weight: var(--weight-bold);
+    }
+{% endblock %}
+
+{% block content %}
+<div class="main_text">
+    <h2>お申し込み</h2>
+
+    {% if form.errors %}
+    <p class="error">入力内容をご確認ください。</p>
+    {% endif %}
+
+    <form method="post" action="{% url 'confirm' project.name %}">
+        {% csrf_token %}
+        <input type="hidden" name="slot" value="{{ slot.pk }}">
+        <div class="form-group">
+            <span class="form-label">日時</span>
+            <div class="date">{{ slot.label }}</div>
+        </div>
+
+        {% for field in form %}
+        <div class="form-group">
+            {% if field.field.kind == 'sex' or field.field.kind == 'bool' %}
+            <span class="form-label">{{ field.label }}</span>
+            <div class="choices">
+                {% for choice in field %}
+                {{ choice.tag }}<label for="{{ choice.id_for_label }}">{{ choice.choice_label }}</label>
+                {% endfor %}
+            </div>
+            {% else %}
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            <div>{{ field }}{% if field.field.kind == 'age' %} 歳{% endif %}</div>
+            {% endif %}
+            {{ field.errors }}
+        </div>
+        {% endfor %}
+
+        <div class="button-group">
+            <button type="submit" class="button--sub" formaction="{% url 'timeframe' project.name %}" formnovalidate>日時選択に戻る</button>
+            <button type="submit">申し込む</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

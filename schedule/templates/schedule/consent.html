@@ -1,0 +1,39 @@
+{% extends 'schedule/base.html' %}
+
+{% block style %}
+    .main_text {
+        min-height: 50vh;
+    }
+
+    .button_row {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+{% endblock %}
+
+{% block content %}
+<div class="main_text">{{ project.consent_html }}</div>
+<div class="button_row">
+    {% if project.manual_data %}
+    <a href="{% url 'manual' project.name %}" target="_blank" rel="noopener" class="button" onclick="enableNext()">説明書を読む</a>
+    <button type="button" class="button--secondary" id="next_button" onclick="goToNextPage()" disabled>次へ進む</button>
+    {% else %}
+    <button type="button" class="button--secondary" id="next_button" onclick="goToNextPage()">次へ進む</button>
+    {% endif %}
+</div>
+{% if project.manual_data %}<p class="note">※「説明書を読む」を押すと「次へ進む」が押せるようになります。</p>{% endif %}
+{% endblock %}
+
+{% block script %}
+<script>
+    function goToNextPage() {
+        window.location.href = "{% url 'timeframe' project.name %}";
+    }
+    function enableNext() {
+        document.getElementById("next_button").disabled = false;
+    }
+</script>
+{% endblock %}

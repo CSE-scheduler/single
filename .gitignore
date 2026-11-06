@@ -1,0 +1,15 @@
+# パスワードが入る設定ファイル
+django_app/local_settings.py
+
+# データベース（参加者のデータが入る）
+db.sqlite3
+*.sqlite3
+*.sql
+
+# collectstatic で集めた静的ファイル
+staticfiles/
+
+.venv/
+__pycache__/
+*.pyc
+.DS_Store

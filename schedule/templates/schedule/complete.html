@@ -1,0 +1,10 @@
+{% extends 'schedule/base.html' %}
+
+{% block content %}
+<div class="main_text">{{ text }}</div>
+{% if project.complete_button_text and project.complete_button_url %}
+<div class="button-group">
+    <a class="button button--secondary" href="{{ project.complete_button_url }}">{{ project.complete_button_text }}</a>
+</div>
+{% endif %}
+{% endblock %}

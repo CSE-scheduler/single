@@ -1,0 +1,364 @@
+{% extends 'schedule/setting/base.html' %}
+
+{% block page_title %}{{ project.name }}{% endblock %}
+
+{% block admin_style %}
+    .participant-url {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: var(--font-medium-small);
+    }
+
+    .participant-url code {
+        padding: 2px 8px;
+        background-color: var(--primary-hover);
+        border-radius: 4px;
+        word-break: break-all;
+    }
+
+    .section {
+        margin-top: 40px;
+        padding-top: 24px;
+        border-top: 1px solid var(--gray-light);
+    }
+
+    .section:first-of-type {
+        margin-top: 24px;
+    }
+
+    .section > h3 {
+        margin-top: 0;
+    }
+
+    /* カレンダーのマス（押すと ◯ と × が切り替わる） */
+    .grid button.cell {
+        display: block;
+        width: 100%;
+        padding: 6px 0;
+        border-radius: 0;
+        background-color: transparent;
+        color: var(--primary);
+    }
+
+    .grid button.cell:hover {
+        background-color: var(--primary-selected);
+    }
+
+    .grid button.cell.mark--closed {
+        color: var(--gray-dark);
+        background-color: var(--gray-light);
+    }
+
+    .grid button.cell.mark--closed:hover {
+        background-color: #cfd3d8;
+    }
+
+    .grid button.cell:disabled {
+        opacity: 0.5;
+    }
+
+    .grid a.mark--reserved {
+        color: var(--secondary) !important;
+        text-decoration: none !important;
+    }
+
+    .grid button.toggle-all {
+        width: 100%;
+        padding: 0;
+        border-radius: 0;
+        background-color: transparent;
+        color: inherit;
+        font-weight: inherit;
+    }
+
+    .grid button.toggle-all:hover {
+        background-color: var(--primary-hover);
+    }
+
+    .grid thead button.toggle-all {
+        padding: 4px 0;
+    }
+
+    /* 取得する項目の表 */
+    .fields-table td {
+        padding: 8px;
+    }
+
+    .fields-table input[type="text"] {
+        width: 100%;
+    }
+
+    .fields-table .kind {
+        font-size: var(--font-small);
+        color: var(--gray-dark);
+        white-space: nowrap;
+    }
+
+    .manual-current {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 8px;
+    }
+
+    .manual-current label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 400;
+    }
+
+    /* main.cssでは見えなくしているファイル選択欄を、設定画面では見えるようにする */
+    input[type="file"] {
+        position: static;
+        width: auto;
+        height: auto;
+        appearance: auto;
+        -webkit-appearance: auto;
+    }
+
+    .save-bar {
+        position: sticky;
+        bottom: 0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 16px;
+        margin: 32px -40px -40px;
+        padding: 16px 40px;
+        background-color: var(--white);
+        box-shadow: var(--shadow-large-bottom);
+    }
+
+    @media (max-width: 768px) {
+        .save-bar {
+            margin: 32px -16px -24px;
+            padding: 12px 16px;
+        }
+    }
+{% endblock %}
+
+{% block admin_content %}
+<div class="main_text main_text--wide">
+    <div class="breadcrumb"><a href="{% url 'setting_home' %}">プロジェクト一覧</a> ＞ {{ project.name }}</div>
+    <div class="page-head">
+        <div>
+            <h2>{{ project.name }}</h2>
+            <div class="participant-url">
+                参加者用ページ：<code id="participant-url">{{ participant_url }}</code>
+                <button type="button" class="button--sub button--small" onclick="copyUrl(this)">コピー</button>
+                <a href="{% url 'consent' project.name %}" target="_blank" rel="noopener">開く</a>
+            </div>
+        </div>
+        <a class="button" href="{% url 'setting_appointments' project.name %}">予約一覧（{{ n_reservations }}件）</a>
+    </div>
+
+    <!-- ===== 予約状況カレンダー ===== -->
+    <div class="section">
+        <h3>予約状況カレンダー</h3>
+        <p class="note">マスを押すと、受付（◯）と受付停止（×）が切り替わり、すぐに保存されます。日付や時刻の見出しを押すと、その列・行をまとめて切り替えます（予約が入っている枠は変わりません）。「済」を押すとその日の予約一覧を開きます。</p>
+        <div class="legend">
+            <span><span class="mark mark--open">◯</span>受付中</span>
+            <span><span class="mark mark--closed">×</span>受付停止（こちらで止めた枠）</span>
+            <span><span class="mark mark--reserved">済</span>予約あり</span>
+        </div>
+        {% include 'schedule/_week_nav.html' %}
+        {% for week in weeks %}
+        <div class="grid-wrap week" data-title="{{ week.title }}" hidden>
+            <table class="grid">
+                <thead>
+                    <tr>
+                        <th class="time"></th>
+                        {% for column in week.columns %}
+                        <th class="{{ column.kind }}"><button type="button" class="toggle-all" data-scope="column" title="この日をまとめて切り替える">{{ column.label }}<span class="day-name">({{ column.day_name }})</span></button></th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in week.rows %}
+                    <tr>
+                        <th class="time"><button type="button" class="toggle-all" data-scope="row" title="この時刻をまとめて切り替える">{{ row.time }}</button></th>
+                        {% for slot in row.cells %}
+                        <td>
+                            {% if not slot %}
+                            <span class="mark">-</span>
+                            {% elif slot.state == 'reserved' %}
+                            <a class="mark mark--reserved" href="{% url 'setting_appointments' project.name %}?from={{ slot.start|date:'Y-m-d' }}&to={{ slot.start|date:'Y-m-d' }}" title="{{ slot.reservation.full_name|default:slot.reservation.name }}">済</a>
+                            {% else %}
+                            <button type="button" class="cell mark mark--{{ slot.state }}" data-id="{{ slot.pk }}" title="{{ slot.label }}">{% if slot.state == 'open' %}◯{% else %}×{% endif %}</button>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+
+    <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+
+        <!-- ===== プロジェクト名 ===== -->
+        <div class="section">
+            <h3>プロジェクト名</h3>
+            <div class="form-group">
+                <input type="text" name="name" id="id_name" maxlength="100" value="{{ form.name.value|default:'' }}" required>
+                <p class="note">参加者用ページのURLになります。変えると今までのURLは使えなくなります。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
+                {{ form.name.errors }}
+            </div>
+        </div>
+
+        <!-- ===== 最初の画面 ===== -->
+        <div class="section">
+            <h3>最初の画面（同意画面）</h3>
+            <div class="form-group">
+                <label for="id_consent_text">文言</label>
+                <textarea name="consent_text" id="id_consent_text" rows="10">{{ form.consent_text.value|default:'' }}</textarea>
+                <p class="note">改行はそのまま反映されます。HTMLタグ（&lt;h2&gt;見出し&lt;/h2&gt;、&lt;strong&gt;強調&lt;/strong&gt; など）も使えます。</p>
+                {{ form.consent_text.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_manual">説明書</label>
+                {% if project.manual_data %}
+                <div class="manual-current">
+                    <span>現在の説明書：<a href="{% url 'manual' project.name %}" target="_blank" rel="noopener">{{ project.manual_name }}</a></span>
+                    <label><input type="checkbox" name="manual_clear" value="on"> 説明書を削除する</label>
+                </div>
+                {% else %}
+                <p class="note">説明書がないときは、「説明書を読む」ボタンを出さず、「次へ進む」をすぐ押せるようにします。</p>
+                {% endif %}
+                <input type="file" name="manual" id="id_manual" accept=".pdf,.png,.jpg,.jpeg">
+                <p class="note">PDF・PNG・JPEG（10MBまで）。新しいファイルを選んで保存すると差し替わります。参加者が「説明書を読む」を押すと「次へ進む」が押せるようになります。</p>
+                {{ form.manual.errors }}
+            </div>
+        </div>
+
+        <!-- ===== 取得するデータ ===== -->
+        <div class="section">
+            <h3>日程調整のときに取得するデータ</h3>
+            <p class="note">「取得する」にした項目だけが入力画面に出ます（すべて入力必須）。その他1〜6は、入力画面に出す項目名（質問文）を入力してください。</p>
+            <div class="table-wrap">
+                <table class="table fields-table">
+                    <thead>
+                        <tr><th class="center">取得する</th><th>項目</th><th>入力画面に出す項目名</th><th>回答の形式</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for field in fields %}
+                        <tr>
+                            <td class="center"><input type="checkbox" name="{{ field.use.html_name }}" id="{{ field.use.id_for_label }}" {% if field.use.value %}checked{% endif %}></td>
+                            <td><label for="{{ field.use.id_for_label }}">{{ field.label }}</label></td>
+                            <td>
+                                {% if field.title_field %}
+                                <input type="text" name="{{ field.title_field.html_name }}" maxlength="500" value="{{ field.title_field.value|default:'' }}" placeholder="例：{% if field.kind == 'bool' %}過去に同様の実験に参加したことがありますか{% else %}学部・学年{% endif %}">
+                                {{ field.title_field.errors }}
+                                {% else %}
+                                {{ field.label }}
+                                {% endif %}
+                            </td>
+                            <td class="kind">
+                                {% if field.kind == 'bool' %}はい／いいえ
+                                {% elif field.kind == 'textarea' %}自由記述
+                                {% elif field.kind == 'sex' %}男性／女性／その他
+                                {% elif field.kind == 'age' %}数字
+                                {% elif field.kind == 'email' %}メールアドレス
+                                {% else %}文字{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ===== 予約完了画面 ===== -->
+        <div class="section">
+            <h3>予約完了画面</h3>
+            <div class="form-group">
+                <label for="id_complete_text">文言</label>
+                <textarea name="complete_text" id="id_complete_text" rows="8">{{ form.complete_text.value|default:'' }}</textarea>
+                <p class="note">「{日時}」と書いたところは、予約した日時（例：2026年11月5日(木) 10:30〜11:00）に置き換わります。改行・HTMLタグも使えます。</p>
+                {{ form.complete_text.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_complete_button_text">遷移ボタンの文言</label>
+                <input type="text" name="complete_button_text" id="id_complete_button_text" maxlength="200" value="{{ form.complete_button_text.value|default:'' }}" placeholder="例：事前アンケートに進む">
+                {{ form.complete_button_text.errors }}
+            </div>
+            <div class="form-group">
+                <label for="id_complete_button_url">遷移ボタンの遷移先リンク</label>
+                <input type="url" name="complete_button_url" id="id_complete_button_url" maxlength="2000" value="{{ form.complete_button_url.value|default:'' }}" placeholder="https://...">
+                <p class="note">文言と遷移先の両方を空にすると、ボタンは出ません。</p>
+                {{ form.complete_button_url.errors }}
+            </div>
+        </div>
+
+        <div class="save-bar">
+            <a class="button button--sub" href="{% url 'setting_home' %}">一覧に戻る</a>
+            <button type="submit">設定を保存</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block script %}
+{% include 'schedule/_weeks_script.html' %}
+<script>
+    showWeek(0);
+
+    function copyUrl(button) {
+        navigator.clipboard.writeText(document.getElementById('participant-url').textContent).then(() => {
+            button.textContent = 'コピーしました';
+            setTimeout(() => { button.textContent = 'コピー'; }, 1500);
+        });
+    }
+
+    async function toggle(cells) {
+        cells = cells.filter((cell) => !cell.disabled);
+        if (!cells.length) return;
+        cells.forEach((cell) => { cell.disabled = true; });
+        const body = new URLSearchParams();
+        cells.forEach((cell) => body.append('ids', cell.dataset.id));
+        try {
+            const response = await fetch("{% url 'setting_slots' project.name %}", {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'fetch' },
+                body,
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || '保存できませんでした。');
+            cells.forEach((cell) => {
+                const state = data.states[cell.dataset.id];
+                if (!state) return;
+                cell.classList.toggle('mark--open', state === 'open');
+                cell.classList.toggle('mark--closed', state === 'closed');
+                cell.textContent = state === 'open' ? '◯' : '×';
+            });
+        } catch (error) {
+            alert(error.message + '\n画面を読み込みなおしてください。');
+        } finally {
+            cells.forEach((cell) => { cell.disabled = false; });
+        }
+    }
+
+    document.querySelectorAll('.grid button.cell').forEach((cell) => {
+        cell.addEventListener('click', () => toggle([cell]));
+    });
+
+    document.querySelectorAll('.grid button.toggle-all').forEach((button) => {
+        button.addEventListener('click', () => {
+            const table = button.closest('table');
+            if (button.dataset.scope === 'row') {
+                toggle(Array.from(button.closest('tr').querySelectorAll('button.cell')));
+            } else {
+                const index = button.closest('th').cellIndex;
+                const cells = Array.from(table.tBodies[0].rows).map((row) => row.cells[index].querySelector('button.cell'));
+                toggle(cells.filter(Boolean));
+            }
+        });
+    });
+</script>
+{% endblock %}

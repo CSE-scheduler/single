@@ -1,0 +1,4 @@
+Django~=5.1.0
+jpholiday==0.1.10
+# MySQLを使うときだけ、次の行の # を外す（SQLiteのままなら不要）
+# mysqlclient==2.2.7

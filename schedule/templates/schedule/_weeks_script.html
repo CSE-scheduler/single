@@ -1,0 +1,14 @@
+<script>
+    // 7日ごとのページ（.week）を「前の週・次の週」で切り替える
+    const weeks = document.querySelectorAll('.week');
+    let current = 0;
+
+    function showWeek(index) {
+        if (index < 0 || index >= weeks.length) return;
+        weeks.forEach((week, i) => { week.hidden = i !== index; });
+        current = index;
+        document.getElementById('week-title').textContent = weeks[index].dataset.title;
+        document.getElementById('prev').disabled = index === 0;
+        document.getElementById('next').disabled = index === weeks.length - 1;
+    }
+</script>

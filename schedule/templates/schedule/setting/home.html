@@ -1,0 +1,96 @@
+{% extends 'schedule/setting/base.html' %}
+
+{% block page_title %}プロジェクト一覧{% endblock %}
+
+{% block admin_style %}
+    .new-project {
+        display: flex;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 16px 20px;
+        margin-bottom: 24px;
+        background-color: var(--primary-hover);
+        border-radius: var(--border-radius-base);
+    }
+
+    .new-project .form-group {
+        margin: 0;
+        width: auto;
+        flex: 1 1 280px;
+    }
+
+    .new-project input[type="text"] {
+        width: 100%;
+    }
+
+    .new-project button {
+        margin-top: 26px;
+    }
+
+    .project-name {
+        font-weight: var(--weight-bold);
+        font-size: var(--font-medium);
+        word-break: break-all;
+    }
+
+    .unpaid {
+        color: var(--secondary);
+        font-weight: var(--weight-bold);
+    }
+{% endblock %}
+
+{% block admin_content %}
+<div class="main_text main_text--wide">
+    <h2>プロジェクト一覧</h2>
+
+    <form method="post" class="new-project">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <div class="form-group">
+            <label for="id_name">新しいプロジェクトを作る</label>
+            <input type="text" name="name" id="id_name" maxlength="100" value="{{ form.name.value|default:'' }}" placeholder="例：exp2026-A" required>
+            <p class="note">プロジェクト名はURLになります（例：https://csescheduler.pythonanywhere.com/<b>exp2026-A</b>/）。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
+            {{ form.name.errors }}
+        </div>
+        <button type="submit">作成</button>
+    </form>
+
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>プロジェクト名</th>
+                    <th class="right">予約数</th>
+                    <th class="right">今日以降の予約</th>
+                    <th class="right">謝金未払い</th>
+                    <th>参加者用ページ</th>
+                    <th class="right"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for project in projects %}
+                <tr>
+                    <td><a class="project-name" href="{% url 'setting_project' project.name %}">{{ project.name }}</a></td>
+                    <td class="right">{{ project.n_reservations }}</td>
+                    <td class="right">{{ project.n_upcoming }}</td>
+                    <td class="right">{% if project.n_unpaid %}<span class="unpaid">{{ project.n_unpaid }}</span>{% else %}0{% endif %}</td>
+                    <td><a href="{% url 'consent' project.name %}" target="_blank" rel="noopener">開く</a></td>
+                    <td class="right">
+                        <a class="button button--sub button--small" href="{% url 'setting_project' project.name %}">編集</a>
+                        <form class="inline-form" method="post" onsubmit="return confirm('プロジェクト「{{ project.name|escapejs }}」を削除します。予約（{{ project.n_reservations }}件）もすべて消え、元に戻せません。よろしいですか？')">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="id" value="{{ project.pk }}">
+                            <button type="submit" class="button--danger button--small">削除</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">まだプロジェクトはありません。上の欄から作成してください。</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

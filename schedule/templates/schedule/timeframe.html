@@ -1,0 +1,126 @@
+{% extends 'schedule/base.html' %}
+
+{% block style %}
+    /* 予約できる枠（◯）。main.cssのラジオボタンの見た目を、表のマス用に上書きする */
+    .grid input[type="radio"] + label {
+        display: block;
+        padding: 6px 0;
+        border: none;
+        border-radius: 0;
+        color: var(--primary);
+        cursor: pointer;
+    }
+
+    .grid input[type="radio"] + label:hover {
+        background-color: var(--primary-selected);
+    }
+
+    .grid input[type="radio"]:checked + label {
+        color: var(--white);
+        background-color: var(--primary);
+    }
+
+    .selected-area {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding-top: 24px;
+    }
+
+    .selected-date {
+        font-size: var(--font-medium);
+        font-weight: var(--weight-bold);
+    }
+
+    .selected-date--empty {
+        color: var(--gray-dark);
+        font-weight: 400;
+    }
+{% endblock %}
+
+{% block content %}
+<div class="main_text">
+    <h2>日時の選択</h2>
+
+    {% if weeks %}
+    <div class="legend">
+        <span><span class="mark mark--open">◯</span>予約できます</span>
+        <span><span class="mark mark--closed">×</span>受付をしていません</span>
+        <span><span class="mark mark--reserved">済</span>予約が入っています</span>
+    </div>
+    <form method="post" action="{% url 'entry' project.name %}">
+        {% csrf_token %}
+        {% include 'schedule/_week_nav.html' %}
+
+        {% for week in weeks %}
+        <div class="grid-wrap week" data-title="{{ week.title }}" hidden>
+            <table class="grid">
+                <thead>
+                    <tr>
+                        <th class="time"></th>
+                        {% for column in week.columns %}
+                        <th class="{{ column.kind }}">{{ column.label }}<span class="day-name">({{ column.day_name }})</span></th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in week.rows %}
+                    <tr>
+                        <th class="time">{{ row.time }}</th>
+                        {% for slot in row.cells %}
+                        <td>
+                            {% if not slot %}
+                            <span class="mark mark--closed">×</span>
+                            {% elif slot.state == 'open' %}
+                            <input type="radio" name="slot" value="{{ slot.pk }}" id="slot{{ slot.pk }}" data-label="{{ slot.label }}" {% if slot.pk|stringformat:"d" == selected %}checked{% endif %}>
+                            <label for="slot{{ slot.pk }}">◯</label>
+                            {% elif slot.state == 'reserved' %}
+                            <span class="mark mark--reserved">済</span>
+                            {% else %}
+                            <span class="mark mark--closed">×</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+
+        <div class="selected-area">
+            <div class="selected-date selected-date--empty" id="selected-date">ご希望の日時を選択してください</div>
+            <div class="button-group">
+                <a class="button button--sub" href="{% url 'consent' project.name %}">最初の画面に戻る</a>
+                <button type="submit" id="submit" disabled>入力画面へ</button>
+            </div>
+        </div>
+    </form>
+    {% else %}
+    <p>現在、予約を受け付けている日時はありません。</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block script %}
+{% include 'schedule/_weeks_script.html' %}
+<script>
+    function showSelected() {
+        const checked = document.querySelector('input[name="slot"]:checked');
+        if (!checked) return;
+        const area = document.getElementById('selected-date');
+        area.textContent = checked.dataset.label;
+        area.classList.remove('selected-date--empty');
+        document.getElementById('submit').disabled = false;
+    }
+
+    if (weeks.length) {
+        document.querySelectorAll('input[name="slot"]').forEach((input) => input.addEventListener('change', showSelected));
+        // 入力画面から戻ってきたときは、選んでいた日時の週を開く
+        const checked = document.querySelector('input[name="slot"]:checked');
+        showWeek(checked ? Array.from(weeks).indexOf(checked.closest('.week')) : 0);
+        showSelected();
+    }
+</script>
+{% endblock %}

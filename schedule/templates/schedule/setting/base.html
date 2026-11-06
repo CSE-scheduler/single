@@ -1,0 +1,72 @@
+{% extends 'schedule/base.html' %}
+
+{% block title %}{% block page_title %}設定{% endblock %} | 日程調整{% endblock %}
+
+{% block style %}
+    .admin-header {
+        width: min(1200px, 100%);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .admin-header__title {
+        font-weight: var(--weight-superbold);
+        letter-spacing: 0.1em;
+    }
+
+    .admin-header__nav {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .breadcrumb {
+        font-size: var(--font-medium-small);
+        color: var(--gray-dark);
+        margin-bottom: 8px;
+    }
+
+    .page-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .page-head h2 {
+        margin-bottom: 4px;
+        word-break: break-all;
+    }
+
+    .inline-form {
+        display: inline;
+    }
+
+    {% block admin_style %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+{% if request.session.schedule_admin %}
+<header class="admin-header">
+    <a class="admin-header__title" href="{% url 'setting_home' %}">日程調整 設定</a>
+    <nav class="admin-header__nav">
+        <a class="button button--sub button--small" href="{% url 'setting_home' %}">プロジェクト一覧</a>
+        <form class="inline-form" method="post" action="{% url 'setting_logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="button--sub button--small">ログアウト</button>
+        </form>
+    </nav>
+</header>
+{% endif %}
+{% if messages %}
+<ul class="messages">
+    {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% block admin_content %}{% endblock %}
+{% endblock %}
