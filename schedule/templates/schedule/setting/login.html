@@ -4,7 +4,7 @@
 
 {% block admin_content %}
 <div class="main_text" style="width: min(480px, 100%)">
-    <h2>設定画面へのログイン</h2>
+    <h2>ログイン</h2>
     <form method="post">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next }}">
