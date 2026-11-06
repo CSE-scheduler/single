@@ -394,6 +394,7 @@
         <!-- ===== 予約確認メール ===== -->
         <div class="section">
             <h3>予約確認メール</h3>
+            {% if not mail_ready %}<p class="error">送信用のメールアカウント（local_settings.py の EMAIL_HOST_USER・EMAIL_HOST_PASSWORD）が設定されていないため、今はメールが送られません。</p>{% endif %}
             <div class="form-group">
                 <label class="checkbox-label"><input type="checkbox" name="mail_enabled" id="id_mail_enabled" {% if form.mail_enabled.value %}checked{% endif %}> 予約が完了したときに確認メールを送る</label>
                 <p class="note">予約した人の「メールアドレス」に送ります（上の「取得するデータ」でメールアドレスを「取得する」にしてください）。</p>

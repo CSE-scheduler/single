@@ -156,6 +156,8 @@ def project_edit(request, project):
         'week': admin_week(stored, starts[index]),
         'n_reservations': Reservation.objects.filter(slot__project=stored).count(),
         'participant_url': request.build_absolute_uri(reverse('consent', args=[stored.name])),
+        # local_settings.py に送信用のGmailを書いていないと、メールは送られない
+        'mail_ready': bool(settings.EMAIL_HOST_PASSWORD),
     })
 
 

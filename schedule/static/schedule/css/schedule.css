@@ -340,6 +340,16 @@ select:disabled {
     padding: 6px 0;
 }
 
+/* 表のマスの中身は、どれも同じ高さでマスいっぱいに広げる（色付きのマスの上下に余白ができないように） */
+.grid td > .mark,
+.grid td > button.cell,
+.grid td > input[type="radio"] + label {
+    display: block;
+    height: 34px;
+    line-height: 34px;
+    padding: 0;
+}
+
 .mark--open {
     color: var(--primary);
 }
@@ -366,15 +376,15 @@ select:disabled {
 /* 実施済み（謝金未払い）：黄色 */
 .mark--done {
     color: #8A6500;
-    background-color: #FFF1BF;
+    background-color: #FFF8DD;
     font-size: var(--font-small);
     font-weight: var(--weight-bold);
 }
 
-/* No Show：黒色 */
+/* No Show：濃い灰色 */
 .mark--no_show {
     color: var(--white);
-    background-color: var(--text);
+    background-color: var(--gray-dark);
     font-size: var(--font-small);
     font-weight: var(--weight-bold);
 }
