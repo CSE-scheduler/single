@@ -98,7 +98,7 @@
     .status-select[data-status="test"] { color: var(--gray-dark); }
 {% endblock %}
 
-{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a>{% include 'schedule/icons/chevron_right.html' %}<a href="{% url 'setting_project' project.name %}">{{ project.name }}</a>{% include 'schedule/icons/chevron_right.html' %}予約一覧{% endblock %}
+{% block breadcrumb %}<a href="{% url 'setting_project' project.name %}">{{ project.name }}</a>{% include 'schedule/icons/chevron_right.html' %}予約一覧{% endblock %}
 
 {% block admin_content %}
 <div class="main_text main_text--wide">

@@ -59,7 +59,6 @@
         display: inline-flex;
         align-items: center;
         gap: 2px;
-        font-weight: 700;
         padding-right: 14px;
     }
 
@@ -262,8 +261,6 @@
 
 {% endblock %}
 
-{% block breadcrumb %}<a href="{% url 'setting_home' %}">プロジェクト一覧</a>{% include 'schedule/icons/chevron_right.html' %}{{ project.name }}{% endblock %}
-
 {% block admin_content %}
 <div class="main_text main_text--wide">
     <div class="page-head">
@@ -286,7 +283,7 @@
         <div>参加者数<strong>{{ stats.total }}</strong></div>
         <div>今日以降の予約<strong>{{ stats.upcoming }}</strong></div>
         <div>支払い済み<strong>{{ stats.paid }}</strong></div>
-        <a class="button button--icon-right" href="{% url 'setting_appointments' project.name %}">参加者一覧へ{% include 'schedule/icons/chevron_right.html' %}</a>
+        <a class="button button--icon-right" href="{% url 'setting_appointments' project.name %}">参加者一覧{% include 'schedule/icons/chevron_right.html' %}</a>
     </div>
 
     <!-- ===== 募集期間と予約状況カレンダー ===== -->
