@@ -289,6 +289,19 @@
         {% endif %}
     </div>
 
+    {% if not project.published %}
+    <!-- 停止中：最初の画面に出す文言 -->
+    <form method="post" class="autosave closed-form" id="closed-form" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="closed_message">
+        <div class="form-group">
+            <label for="id_closed_message_edit">募集画面本文</label>
+            <textarea name="closed_message" id="id_closed_message_edit" rows="3">{{ project.closed_message }}</textarea>
+            <p class="note">停止中は、募集ページにこの文言だけが表示されます。</p>
+        </div>
+    </form>
+    {% endif %}
+
     <div class="stats">
         <div>参加者数<strong>{{ stats.total }}</strong></div>
         <div>今日以降の予約<strong>{{ stats.upcoming }}</strong></div>

@@ -126,6 +126,14 @@ def project_edit(request, project):
             fields.append('closed_message')
         project.save(update_fields=fields)
         return JsonResponse({'ok': True, 'reload': True})
+    elif request.method == 'POST' and request.POST.get('action') == 'closed_message':
+        # 停止中に最初の画面に出す文言（編集画面のタイトルの下で編集する）
+        message = request.POST.get('closed_message', '').strip()
+        if not message:
+            return JsonResponse({'ok': False, 'errors': {'closed_message': ['表示する文言を入力してください。']}})
+        project.closed_message = message
+        project.save(update_fields=['closed_message'])
+        return JsonResponse({'ok': True})
     elif request.method == 'POST' and request.POST.get('action') == 'manual':
         # 説明書のアップロード（モーダルから）。表示を新しくするため、保存したら画面を読みなおす
         manual_form = ManualForm(request.POST, request.FILES)

@@ -827,11 +827,17 @@ class PublishTests(TestCase):
         self.client.post(reverse('confirm', args=['pub']), {'slot': slot.pk, 'full_name': 'x'})
         self.assertFalse(Reservation.objects.exists())
 
+        # 停止中は、編集画面のタイトルの下で文言を直せる
+        self.assertContains(self.client.get(self.url), '募集画面本文')
+        self.assertFalse(self.client.post(self.url, {'action': 'closed_message', 'closed_message': ''}, **self.fetch).json()['ok'])
+        self.client.post(self.url, {'action': 'closed_message', 'closed_message': '募集は終了しました。'}, **self.fetch)
+
         self.client.post(self.url, {'action': 'publish', 'published': '1'}, **self.fetch)
         self.project.refresh_from_db()
         self.assertTrue(self.project.published)
         self.assertEqual(self.project.closed_message, '募集は終了しました。')  # 次に停止するときの初期値
         self.assertContains(self.client.get(reverse('consent', args=['pub'])), '次へ進む')
+        self.assertNotContains(self.client.get(self.url), '募集画面本文')
 
     def test_admin_calendar_shows_recruit_hours(self):
         self.project.time_start = datetime.time(9)
