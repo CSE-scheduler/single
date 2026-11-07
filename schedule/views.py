@@ -251,7 +251,7 @@ def change(request, project, token):
     except IntegrityError:
         return unavailable
 
-    send_confirmation(reservation, _manage_url(request, reservation))
+    send_confirmation(reservation, _manage_url(request, reservation), changed=True)
     return redirect(f'{manage_url}?changed=1')
 
 

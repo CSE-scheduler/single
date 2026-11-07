@@ -1,6 +1,6 @@
 {% extends 'schedule/base.html' %}
 
-{% block title %}ご予約の確認{% endblock %}
+{% block title %}{% if changed %}日時の変更が完了しました{% else %}ご予約の確認{% endif %}{% endblock %}
 
 {% block style %}
     .details {
@@ -31,8 +31,12 @@
 
 {% block content %}
 <div class="main_text">
+    {% if changed %}
+    <h2>日時の変更が完了しました</h2>
+    {% if project.mail_enabled and reservation.mail %}<p class="notice">変更後の日時で確認メールをお送りしました。</p>{% endif %}
+    {% else %}
     <h2>ご予約の確認</h2>
-    {% if changed %}<p class="notice">日時を変更しました。{% if project.mail_enabled %}確認メールをお送りしました。{% endif %}</p>{% endif %}
+    {% endif %}
     <table class="details">
         <tr><th>日時</th><td>{{ reservation.label }}</td></tr>
         <tr><th>所要時間</th><td>{{ reservation.duration_label }}</td></tr>

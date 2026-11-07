@@ -729,7 +729,8 @@ class ManageReservationTests(TestCase):
         self.assertEqual(self.r.full_name, '山田')  # 入力した内容はそのまま
         self.assertEqual(len(mail.outbox), 1)      # 変更後の日時で確認メールを送る
         self.assertIn('10:30', mail.outbox[0].body)
-        self.assertContains(self.client.get(self.url + '?changed=1'), '日時を変更しました')
+        self.assertTrue(mail.outbox[0].subject.startswith('【日時の変更が完了しました】' + self.project.mail_subject))
+        self.assertContains(self.client.get(self.url + '?changed=1'), '<h2>日時の変更が完了しました</h2>')
 
     def test_change_to_unavailable(self):
         Reservation.objects.create(slot=self.slot(14), duration=60, full_name='別の人')

@@ -44,12 +44,19 @@ def _send(project, reservation, subject, body):
     return True
 
 
-def send_confirmation(reservation, manage_url):
-    """予約確認メールを送る。送れたら True。manage_url は予約の変更・キャンセルのページのURL"""
+# 日時を変更したときの確認メールは、タイトルの前にこれをつける
+CHANGED_SUBJECT_PREFIX = '【日時の変更が完了しました】'
+
+
+def send_confirmation(reservation, manage_url, changed=False):
+    """予約確認メールを送る。送れたら True。manage_url は予約の変更・キャンセルのページのURL。
+    changed=True（日時を変更したとき）は、タイトルの前に【日時の変更が完了しました】をつける"""
     project = reservation.slot.project
     if not project.mail_enabled or not reservation.mail:
         return False
     subject, body = render(project.mail_subject, project.mail_body, project, reservation, manage_url)
+    if changed:
+        subject = CHANGED_SUBJECT_PREFIX + subject
     return _send(project, reservation, subject, body)
 
 
