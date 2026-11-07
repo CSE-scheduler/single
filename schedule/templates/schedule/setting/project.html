@@ -448,16 +448,21 @@
                 {{ form.complete_text.errors }}
             </div>
             <div class="form-group">
-                <label for="id_complete_button_text">遷移ボタンの文言</label>
-                <input type="text" name="complete_button_text" id="id_complete_button_text" maxlength="200" value="{{ form.complete_button_text.value|default:'' }}" placeholder="例：事前アンケートに進む">
-                {{ form.complete_button_text.errors }}
+                <label class="checkbox-label"><input type="checkbox" name="complete_button_enabled" id="id_complete_button_enabled" {% if form.complete_button_enabled.value %}checked{% endif %}> 遷移ボタンを設置する</label>
+                <p class="note">予約完了画面に、別のページ（事前アンケートなど）へ進むボタンを出します。</p>
             </div>
-            <div class="form-group">
-                <label for="id_complete_button_url">遷移ボタンの遷移先リンク</label>
-                <input type="url" name="complete_button_url" id="id_complete_button_url" maxlength="2000" value="{{ form.complete_button_url.value|default:'' }}" placeholder="https://...">
-                <p class="note">文言と遷移先の両方を空にすると、ボタンは出ません。</p>
-                {{ form.complete_button_url.errors }}
-            </div>
+            <fieldset class="mail-detail" id="button-detail" {% if not form.complete_button_enabled.value %}disabled{% endif %}>
+                <div class="form-group">
+                    <label for="id_complete_button_text">遷移ボタンの文言</label>
+                    <input type="text" name="complete_button_text" id="id_complete_button_text" maxlength="200" value="{{ form.complete_button_text.value|default:'' }}" placeholder="例：事前アンケートに進む">
+                    {{ form.complete_button_text.errors }}
+                </div>
+                <div class="form-group">
+                    <label for="id_complete_button_url">遷移ボタンの遷移先リンク</label>
+                    <input type="url" name="complete_button_url" id="id_complete_button_url" maxlength="2000" value="{{ form.complete_button_url.value|default:'' }}" placeholder="https://...">
+                    {{ form.complete_button_url.errors }}
+                </div>
+            </fieldset>
         </div>
 
         <!-- ===== 予約確認メール ===== -->
@@ -566,6 +571,29 @@
         </div>
         <div class="button-group">
             <button type="submit">追加する</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- 遷移ボタンを設置するときに、文言と遷移先を入れてもらうモーダル -->
+<dialog class="modal" id="button-modal" aria-labelledby="button-modal-title">
+    <div class="modal__head">
+        <h3 id="button-modal-title">遷移ボタンを設置する</h3>
+        <button type="button" class="modal__close" data-close aria-label="閉じる">{% include 'schedule/icons/close.html' %}</button>
+    </div>
+    <form id="button-modal-form" novalidate>
+        <div class="form-group">
+            <label for="button-modal-text">遷移ボタンの文言</label>
+            <input type="text" id="button-modal-text" maxlength="200" placeholder="例：事前アンケートに進む">
+            <ul class="errorlist" id="button-modal-text-error" hidden><li>文言を入力してください。</li></ul>
+        </div>
+        <div class="form-group">
+            <label for="button-modal-url">遷移ボタンの遷移先リンク</label>
+            <input type="url" id="button-modal-url" maxlength="2000" placeholder="https://...">
+            <ul class="errorlist" id="button-modal-url-error" hidden><li>http:// か https:// で始まるリンクを入力してください。</li></ul>
+        </div>
+        <div class="button-group">
+            <button type="submit">設定する</button>
         </div>
     </form>
 </dialog>
@@ -733,6 +761,45 @@
         mailDetail.disabled = false;
         mailModal.close();
         refreshHighlights();
+        save(settingsForm);
+    });
+
+    // ---- 遷移ボタン：設置するときに文言か遷移先が空なら、モーダルで入れてもらう ----
+    const buttonEnabled = document.getElementById('id_complete_button_enabled');
+    const buttonDetail = document.getElementById('button-detail');
+    const buttonText = document.getElementById('id_complete_button_text');
+    const buttonUrl = document.getElementById('id_complete_button_url');
+    const buttonModal = document.getElementById('button-modal');
+    const buttonModalText = document.getElementById('button-modal-text');
+    const buttonModalUrl = document.getElementById('button-modal-url');
+
+    buttonEnabled.addEventListener('click', (event) => {
+        // 外すとき・文言と遷移先がどちらも入っているときは、そのまま保存する
+        if (!buttonEnabled.checked || (buttonText.value.trim() && buttonUrl.value.trim())) return;
+        event.preventDefault();
+        buttonModalText.value = buttonText.value;
+        buttonModalUrl.value = buttonUrl.value;
+        buttonModal.querySelectorAll('.errorlist').forEach((el) => { el.hidden = true; });
+        buttonModal.showModal();
+        (buttonModalText.value.trim() ? buttonModalUrl : buttonModalText).focus();
+    });
+    buttonEnabled.addEventListener('change', () => {
+        buttonDetail.disabled = !buttonEnabled.checked;  // 保存（フォーム全体のchange）より先に切り替える
+    });
+    document.getElementById('button-modal-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const text = buttonModalText.value.trim();
+        const url = buttonModalUrl.value.trim();
+        const textOk = !!text;
+        const urlOk = /^(https?:\/\/|\/)/.test(url);
+        document.getElementById('button-modal-text-error').hidden = textOk;
+        document.getElementById('button-modal-url-error').hidden = urlOk;
+        if (!textOk || !urlOk) return;
+        buttonText.value = text;
+        buttonUrl.value = url;
+        buttonEnabled.checked = true;
+        buttonDetail.disabled = false;
+        buttonModal.close();
         save(settingsForm);
     });
 

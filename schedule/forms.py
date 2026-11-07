@@ -107,7 +107,7 @@ class ProjectForm(forms.ModelForm):
         model = Project
         fields = [
             'consent_title', 'consent_text', 'complete_title', 'complete_text',
-            'complete_button_text', 'complete_button_url',
+            'complete_button_enabled', 'complete_button_text', 'complete_button_url',
             *USE_FIELDS, *TITLE_FIELDS,
             'mail_enabled', *MAIL_FIELDS,
         ]
@@ -123,10 +123,16 @@ class ProjectForm(forms.ModelForm):
         for key, label, _, editable in FIELDS:
             if editable and cleaned.get(f'use_{key}') and not cleaned.get(f'title_{key}', '').strip():
                 self.add_error(f'title_{key}', f'「{label}」を取得するときは、項目名を入力してください。')
-        text = cleaned.get('complete_button_text', '').strip()
-        url = cleaned.get('complete_button_url', '')
-        if bool(text) != bool(url):
-            self.add_error('complete_button_text', '遷移ボタンを出すときは、文言と遷移先の両方を入力してください（出さないときは両方とも空にします）。')
+        if cleaned.get('complete_button_enabled'):
+            if not cleaned.get('complete_button_text', '').strip():
+                self.add_error('complete_button_text', '遷移ボタンの文言を入力してください。')
+            if 'complete_button_url' not in self.errors and not cleaned.get('complete_button_url'):
+                self.add_error('complete_button_url', '遷移先のリンクを入力してください。')
+        else:
+            # 設置しないあいだは入力欄が送られてこないので、今の値のままにする
+            for name in ('complete_button_text', 'complete_button_url'):
+                self.errors.pop(name, None)
+                cleaned[name] = getattr(self.instance, name)
         if cleaned.get('mail_enabled'):
             if not cleaned.get('use_mail'):
                 self.add_error('mail_enabled', '確認メールを送るときは、「メールアドレス」を「取得する」にしてください。')

@@ -221,6 +221,8 @@ class Project(models.Model):
     # 予約完了画面
     complete_title = models.CharField('予約完了画面のページタイトル', max_length=200, blank=True, default=DEFAULT_COMPLETE_TITLE)
     complete_text = models.TextField('予約完了画面の本文', blank=True, default=DEFAULT_COMPLETE_TEXT)
+    # 遷移ボタンを設置する（オフのあいだも文言・遷移先は残しておく）
+    complete_button_enabled = models.BooleanField('遷移ボタンを設置する', default=False)
     complete_button_text = models.CharField('遷移ボタンの文言', max_length=200, blank=True, default='')
     complete_button_url = models.CharField('遷移ボタンの遷移先', max_length=2000, blank=True, default='')
 

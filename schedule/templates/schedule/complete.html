@@ -5,7 +5,7 @@
     {% if title %}<h2>{{ title }}</h2>{% endif %}
     {{ text }}
 </div>
-{% if project.complete_button_text and project.complete_button_url %}
+{% if project.complete_button_enabled and project.complete_button_text and project.complete_button_url %}
 <div class="button-group">
     <a class="button button--secondary" href="{{ project.complete_button_url }}">{{ project.complete_button_text }}</a>
 </div>

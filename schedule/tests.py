@@ -192,7 +192,8 @@ class ParticipantFlowTests(TestCase):
         self.project = Project.objects.create(
             name='exp-1', use_full_name=True, use_mail=True, use_data_reuse=True,
             use_extra4=True, title_extra4='18歳以上ですか',
-            complete_text='予約：{日時}', complete_button_text='アンケートへ', complete_button_url='https://example.com/q',
+            complete_text='予約：{日時}', complete_button_enabled=True,
+            complete_button_text='アンケートへ', complete_button_url='https://example.com/q',
         )
         self.project.ensure_slots()
 
@@ -341,7 +342,7 @@ class SettingTests(TestCase):
 
         data = {
             'name': 'exp2b', 'consent_text': '同意してください', 'complete_text': '完了',
-            'complete_button_text': '戻る', 'complete_button_url': 'https://example.com',
+            'complete_button_enabled': 'on', 'complete_button_text': '戻る', 'complete_button_url': 'https://example.com',
             'use_full_name': 'on', 'use_extra1': 'on', 'title_extra1': '所属',
         }
         response = self.client.post(reverse('setting_project', args=['exp2']), data)
@@ -370,7 +371,8 @@ class SettingTests(TestCase):
 
         # その他を取得するのに項目名がない、ボタンの遷移先が javascript: は保存しない
         bad = self.client.post(reverse('setting_project', args=['exp2']), {
-            'name': 'exp2b', 'use_extra2': 'on', 'complete_button_text': 'x', 'complete_button_url': 'javascript:alert(1)',
+            'name': 'exp2b', 'use_extra2': 'on', 'complete_button_enabled': 'on',
+            'complete_button_text': 'x', 'complete_button_url': 'javascript:alert(1)',
         })
         self.assertEqual(bad.status_code, 200)
         self.assertContains(bad, '項目名を入力してください')
@@ -840,3 +842,34 @@ class PublishTests(TestCase):
         self.assertIn('>11:30<', page)
         self.assertNotIn('>8:30<', page)
         self.assertNotIn('>12:00<', page)
+
+
+@override_settings(SCHEDULE_ADMIN_PASSWORD_HASH=TEST_HASH)
+class CompleteButtonTests(TestCase):
+    """予約完了画面の遷移ボタン（設置する・しない）"""
+
+    def test_button_toggle(self):
+        login(self.client)
+        project = Project.objects.create(name='btn', use_full_name=True, use_mail=False)
+        url = reverse('setting_project', args=['btn'])
+        # 設置するのに文言・遷移先が空ならエラー
+        response = self.client.post(url, {'use_full_name': 'on', 'complete_button_enabled': 'on'})
+        self.assertContains(response, '遷移ボタンの文言を入力してください')
+        self.assertContains(response, '遷移先のリンクを入力してください')
+        self.client.post(url, {'use_full_name': 'on', 'complete_button_enabled': 'on',
+                               'complete_button_text': 'アンケートへ', 'complete_button_url': 'https://example.com/q'})
+        project.refresh_from_db()
+        self.assertTrue(project.complete_button_enabled)
+        # 外しても文言・遷移先は残る（入力欄は送られてこない）
+        self.client.post(url, {'use_full_name': 'on'})
+        project.refresh_from_db()
+        self.assertFalse(project.complete_button_enabled)
+        self.assertEqual((project.complete_button_text, project.complete_button_url), ('アンケートへ', 'https://example.com/q'))
+        # 設置しないあいだは、予約完了画面にボタンを出さない
+        project.ensure_slots()
+        slot = tomorrow_slot(project)
+        self.client.post(reverse('confirm', args=['btn']), {'slot': slot.pk, 'full_name': 'x'})
+        self.assertNotContains(self.client.get(reverse('complete', args=['btn'])), 'アンケートへ')
+        project.complete_button_enabled = True
+        project.save()
+        self.assertContains(self.client.get(reverse('complete', args=['btn'])), 'アンケートへ')
