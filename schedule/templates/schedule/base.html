@@ -5,6 +5,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}日程調整{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{% static_v 'schedule/image/cse-favicon.png' %}">
+    <link rel="apple-touch-icon" href="{% static_v 'schedule/image/cse-favicon.png' %}">
     <link rel="stylesheet" type="text/css" href="{% static_v 'schedule/css/main.css' %}">
     <link rel="stylesheet" type="text/css" href="{% static_v 'schedule/css/schedule.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,6 +19,11 @@
 </head>
 <body>
     <div class="container">
+        {% block header %}
+        <header class="site-header">
+            <img class="site-logo" src="{% static_v 'schedule/image/cse-logo.png' %}" alt="CSE Scheduler" width="512" height="102">
+        </header>
+        {% endblock %}
         {% block content %}{% endblock %}
     </div>
     {% block script %}{% endblock %}

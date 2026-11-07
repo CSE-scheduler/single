@@ -48,6 +48,19 @@ html body {
     word-break: break-all;
 }
 
+/* ---- 一番上の段（左上にロゴ） ---- */
+.site-header {
+    width: min(1200px, 100%);
+    display: flex;
+    align-items: center;
+}
+
+.site-logo {
+    display: block;
+    width: auto;
+    height: 28px;
+}
+
 /* ---- ボタン ---- */
 button, .button {
     padding: 12px 20px;

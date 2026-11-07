@@ -1,4 +1,5 @@
 {% extends 'schedule/base.html' %}
+{% load schedule_tags %}
 
 {% block title %}{% block page_title %}設定{% endblock %} | 日程調整{% endblock %}
 
@@ -17,6 +18,18 @@
         justify-content: space-between;
         align-items: center;
         gap: 8px;
+    }
+
+    .admin-header__left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-width: 0;
+    }
+
+    .site-logo-link {
+        display: flex;
+        flex: 0 0 auto;
     }
 
     .admin-header__icons {
@@ -162,10 +175,17 @@
     {% block admin_style %}{% endblock %}
 {% endblock %}
 
-{% block content %}
-{% if request.session.schedule_admin %}
-<header class="admin-header">
-    <nav class="breadcrumb" aria-label="現在地">{% block breadcrumb %}{% endblock %}</nav>
+{% block header %}
+<header class="site-header admin-header">
+    <div class="admin-header__left">
+        {% if request.session.schedule_admin %}
+        <a class="site-logo-link" href="{% url 'setting_home' %}" title="プロジェクト一覧"><img class="site-logo" src="{% static_v 'schedule/image/cse-logo.png' %}" alt="CSE Scheduler" width="512" height="102"></a>
+        <nav class="breadcrumb" aria-label="現在地">{% block breadcrumb %}{% endblock %}</nav>
+        {% else %}
+        <img class="site-logo" src="{% static_v 'schedule/image/cse-logo.png' %}" alt="CSE Scheduler" width="512" height="102">
+        {% endif %}
+    </div>
+    {% if request.session.schedule_admin %}
     <div class="admin-header__icons">
         <a class="icon-button" href="{% url 'setting_home' %}" title="プロジェクト一覧" aria-label="プロジェクト一覧">{% include 'schedule/icons/home.html' %}</a>
         <form class="inline-form" method="post" action="{% url 'setting_logout' %}">
@@ -173,8 +193,11 @@
             <button type="submit" class="icon-button" title="ログアウト" aria-label="ログアウト">{% include 'schedule/icons/logout.html' %}</button>
         </form>
     </div>
+    {% endif %}
 </header>
-{% endif %}
+{% endblock %}
+
+{% block content %}
 {% if messages %}
 <ul class="messages">
     {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
