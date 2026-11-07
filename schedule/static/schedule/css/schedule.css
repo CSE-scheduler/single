@@ -8,9 +8,10 @@ html body {
 .container {
     height: auto;
     min-height: 100dvh;
-    padding: 40px 16px;
+    /* 上の余白とロゴの段の高さは、参加者の画面・設定画面で同じにする */
+    padding: 12px 16px 40px;
     align-items: center;
-    gap: 24px;
+    gap: 12px;
 }
 
 .main_text {
@@ -51,6 +52,8 @@ html body {
 /* ---- 一番上の段（左上にロゴ） ---- */
 .site-header {
     width: min(1200px, 100%);
+    height: 32px;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
 }

@@ -76,7 +76,7 @@ def _timeframe_page(request, project, changing=None):
             'week_url': week_url,
             'back_url': reverse('consent', args=[project.name]),
             'back_label': '最初の画面に戻る',
-            'submit_label': '入力画面へ',
+            'submit_label': '次へ',
         })
     return render(request, 'schedule/timeframe.html', params)
 
