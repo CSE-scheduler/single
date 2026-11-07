@@ -206,7 +206,14 @@ def toggle_slots(request, project):
     project = get_object_or_404(Project, name=project)
     ids = [int(i) for i in request.POST.getlist('ids') if i.isdigit()]
     slots = toggleable(project, list(Slot.objects.filter(project=project, pk__in=ids)))
-    # 1つでも受付中の枠があれば全部止める。全部止まっていれば全部再開する
+    if request.POST.get('mode') == 'invert':
+        # ドラッグで選んだ範囲：1つずつ反転する（◯ → ×、× → ◯）
+        to_close = [s.pk for s in slots if not s.closed]
+        to_open = [s.pk for s in slots if s.closed]
+        Slot.objects.filter(pk__in=to_close).update(closed=True)
+        Slot.objects.filter(pk__in=to_open).update(closed=False)
+        return JsonResponse({'states': {s.pk: 'open' if s.closed else 'closed' for s in slots}})
+    # 列・行をまとめて：1つでも受付中の枠があれば全部止める。全部止まっていれば全部再開する
     close = any(not s.closed for s in slots)
     Slot.objects.filter(pk__in=[s.pk for s in slots]).update(closed=close)
     return JsonResponse({'states': {s.pk: 'closed' if close else 'open' for s in slots}})

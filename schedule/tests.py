@@ -503,6 +503,13 @@ class SettingTests(TestCase):
         response = self.client.post(url, {'ids': [a.pk]})
         self.assertEqual(response.json()['states'], {str(a.pk): 'open'})
 
+        # ドラッグで選んだ範囲は1つずつ反転する（予約の入った枠は変えない）
+        response = self.client.post(url, {'ids': [a.pk, b.pk, reserved.pk], 'mode': 'invert'})
+        self.assertEqual(response.json()['states'], {str(a.pk): 'closed', str(b.pk): 'open'})
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual((a.closed, b.closed), (True, False))
+
     def test_appointments(self):
         login(self.client)
         project = Project.objects.create(name='exp4', use_full_name=True, use_mail=False, use_sex=True)

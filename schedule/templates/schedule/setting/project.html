@@ -116,6 +116,16 @@
     }
 
 
+    /* ドラッグで囲んでいる範囲 */
+    .grid td.drag-selected,
+    .grid td.drag-selected > .mark {
+        background-color: #C9D6EC !important;
+    }
+
+    .grid tbody td {
+        user-select: none;
+    }
+
     .grid button.toggle-all {
         width: 100%;
         padding: 0;
@@ -337,7 +347,7 @@
                 </span>
             </div>
         </form>
-        <p class="note">クリックで受付（◯）と受付停止（×）を切り替えられます。日付や時刻を押すと、その列・行をまとめて切り替えられます。</p>
+        <p class="note">クリックで受付（◯）と受付停止（×）を切り替えられます。ドラッグで囲んだ範囲は、マスごとに反転します。日付や時刻を押すと、その列・行をまとめて切り替えられます。</p>
         <div class="legend">
             <span><span class="mark mark--open">◯</span>受付中</span>
             <span><span class="mark mark--closed">×</span>受付停止</span>
@@ -586,12 +596,13 @@
 <script>
     showWeek(current);
 
-    async function toggle(cells) {
+    async function toggle(cells, mode) {
         cells = cells.filter((cell) => !cell.disabled);
         if (!cells.length) return;
         cells.forEach((cell) => { cell.disabled = true; });
         const body = new URLSearchParams();
         cells.forEach((cell) => body.append('ids', cell.dataset.id));
+        if (mode) body.append('mode', mode);
         try {
             const response = await fetch("{% url 'setting_slots' project.name %}", {
                 method: 'POST',
@@ -912,7 +923,67 @@
     }, true);
 
     // あとから読み込んだ週のマスでも押せるように、表全体で受け取る
+    // ---- ドラッグで囲んだ範囲のマスを、1つずつ反転する（マウスのとき） ----
+    let drag = null;  // { table, row, col, moved }
+    let suppressClick = false;
+
+    function cellPosition(td) {
+        return [td.parentElement.rowIndex, td.cellIndex];
+    }
+
+    function dragCells() {
+        // 始めたマスと今のマスを角にした四角の中の td
+        const [r1, c1] = drag.start;
+        const [r2, c2] = drag.end;
+        const tds = [];
+        Array.from(drag.table.tBodies[0].rows).forEach((row) => {
+            if (row.rowIndex < Math.min(r1, r2) || row.rowIndex > Math.max(r1, r2)) return;
+            Array.from(row.cells).forEach((td) => {
+                if (td.tagName === 'TD' && td.cellIndex >= Math.min(c1, c2) && td.cellIndex <= Math.max(c1, c2)) tds.push(td);
+            });
+        });
+        return tds;
+    }
+
+    function paintDrag() {
+        drag.table.querySelectorAll('td.drag-selected').forEach((td) => td.classList.remove('drag-selected'));
+        dragCells().forEach((td) => td.classList.add('drag-selected'));
+    }
+
+    weekArea.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'mouse' || event.button !== 0) return;
+        const td = event.target.closest('tbody td');
+        if (!td) return;
+        event.preventDefault();  // 文字が選択されないように
+        drag = { table: td.closest('table'), start: cellPosition(td), end: cellPosition(td), moved: false };
+    });
+
+    document.addEventListener('pointermove', (event) => {
+        if (!drag) return;
+        const td = document.elementFromPoint(event.clientX, event.clientY)?.closest('tbody td');
+        if (!td || td.closest('table') !== drag.table) return;
+        const position = cellPosition(td);
+        if (position[0] === drag.end[0] && position[1] === drag.end[1]) return;
+        drag.end = position;
+        drag.moved = true;
+        paintDrag();
+    });
+
+    document.addEventListener('pointerup', () => {
+        if (!drag) return;
+        const current = drag;
+        if (current.moved) {
+            const cells = dragCells().map((td) => td.querySelector('button.cell')).filter(Boolean);
+            current.table.querySelectorAll('td.drag-selected').forEach((td) => td.classList.remove('drag-selected'));
+            suppressClick = true;  // ドラッグの終わりのクリックで、もう一度切り替わらないように
+            setTimeout(() => { suppressClick = false; }, 0);
+            toggle(cells, 'invert');
+        }
+        drag = null;
+    });
+
     weekArea.addEventListener('click', (event) => {
+        if (suppressClick) return;
         const cell = event.target.closest('button.cell');
         if (cell) {
             toggle([cell]);
