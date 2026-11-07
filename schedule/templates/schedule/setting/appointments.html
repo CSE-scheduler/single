@@ -5,23 +5,45 @@
 {% block admin_style %}
     .filter {
         display: flex;
-        align-items: flex-end;
+        align-items: center;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 12px 24px;
         padding: 16px 20px;
         margin-bottom: 16px;
         background-color: var(--primary-hover);
         border-radius: var(--border-radius-base);
     }
 
-    .filter .form-group {
-        margin: 0;
-        width: auto;
+    .filter-dates {
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
 
-    .filter-buttons {
+    /* 日付はカレンダーから選ぶだけ（キーボードでは入力しない） */
+    .filter-dates input[type="date"] {
+        cursor: pointer;
+    }
+
+    .status-filter {
         display: flex;
-        gap: 8px;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+    }
+
+    .status-filter label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+    }
+
+    .filter #filter-clear {
+        margin-left: auto;
+    }
+
+    #results.is-loading {
+        opacity: 0.5;
     }
 
     .count-title {
@@ -106,30 +128,23 @@
         <h2>予約一覧</h2>
     </div>
 
-    <form method="get" class="filter">
+    <!-- 絞り込み：変えたらその場で表を読みなおす -->
+    <form method="get" class="filter" id="filter-form">
         <input type="hidden" name="sort" value="{{ sort }}">
-        <div class="form-group">
-            <label for="from">期間（から）</label>
-            <input type="date" id="from" name="from" value="{{ date_from }}">
+        <div class="filter-dates">
+            <input type="date" name="from" value="{{ date_from }}" aria-label="開始日">
+            〜
+            <input type="date" name="to" value="{{ date_to }}" aria-label="終了日">
         </div>
-        <div class="form-group">
-            <label for="to">期間（まで）</label>
-            <input type="date" id="to" name="to" value="{{ date_to }}">
+        <div class="status-filter" role="group" aria-label="ステータス">
+            {% for value, label in statuses %}
+            <label><input type="checkbox" name="status" value="{{ value }}" {% if value in selected_statuses %}checked{% endif %}>{{ label }}</label>
+            {% endfor %}
         </div>
-        <fieldset class="status-filter">
-            <legend>ステータス</legend>
-            <div class="checkbox-row">
-                {% for value, label in statuses %}
-                <label><input type="checkbox" name="status" value="{{ value }}" {% if value in selected_statuses %}checked{% endif %}>{{ label }}</label>
-                {% endfor %}
-            </div>
-        </fieldset>
-        <div class="filter-buttons">
-            <button type="submit">絞り込む</button>
-            {% if filtered %}<a class="button button--sub" href="?sort={{ sort }}">解除</a>{% endif %}
-        </div>
+        <button type="button" class="button--sub button--small" id="filter-clear" {% if not filtered %}hidden{% endif %}>解除</button>
     </form>
 
+    <div id="results">
     <h3 class="count-title">{{ rows|length }}件の予約</h3>
 
     <div class="table-wrap">
@@ -172,30 +187,80 @@
             </tbody>
         </table>
     </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block script %}
 <script>
-    // ステータスは選んだその場で保存する
-    document.querySelectorAll('.status-select').forEach((select) => {
-        select.addEventListener('change', async () => {
-            const previous = select.dataset.status;
-            select.disabled = true;
-            try {
-                const response = await fetch(location.pathname, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'fetch' },
-                    body: new URLSearchParams({ action: 'status', id: select.dataset.id, status: select.value }),
-                });
-                if (!response.ok) throw new Error();
-                select.dataset.status = (await response.json()).status;
-            } catch (error) {
-                select.value = previous;
-                alert('保存できませんでした。画面を読み込みなおしてください。');
-            } finally {
-                select.disabled = false;
-            }
+    // ステータスは選んだその場で保存する（表を読みなおしても効くように、ページ全体で受け取る）
+    document.addEventListener('change', async (event) => {
+        const select = event.target.closest('.status-select');
+        if (!select) return;
+        const previous = select.dataset.status;
+        select.disabled = true;
+        try {
+            const response = await fetch(location.pathname, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'fetch' },
+                body: new URLSearchParams({ action: 'status', id: select.dataset.id, status: select.value }),
+            });
+            if (!response.ok) throw new Error();
+            select.dataset.status = (await response.json()).status;
+            showSaveStatus('保存しました');
+        } catch (error) {
+            select.value = previous;
+            showSaveStatus('保存できませんでした。画面を読み込みなおしてください。', true);
+        } finally {
+            select.disabled = false;
+        }
+    });
+
+    // ---- 絞り込み：日付・ステータスを変えたら、その場で件数と表を読みなおす ----
+    const filterForm = document.getElementById('filter-form');
+    const results = document.getElementById('results');
+    const clearButton = document.getElementById('filter-clear');
+    let filterCount = 0;
+
+    async function applyFilter() {
+        const params = new URLSearchParams(new FormData(filterForm));
+        for (const [key, value] of [...params]) {
+            if (!value) params.delete(key);  // 空の日付はURLに入れない
+        }
+        const url = location.pathname + '?' + params.toString();
+        const count = ++filterCount;
+        results.classList.add('is-loading');
+        try {
+            const html = await (await fetch(url)).text();
+            if (count !== filterCount) return;  // あとから変えた条件の結果を優先する
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            results.innerHTML = doc.getElementById('results').innerHTML;
+            history.replaceState(null, '', url);
+            const filtered = filterForm.from.value || filterForm.to.value || params.has('status');
+            clearButton.hidden = !filtered;
+        } catch (error) {
+            showSaveStatus('読み込めませんでした。通信状態を確かめてください。', true);
+        } finally {
+            if (count === filterCount) results.classList.remove('is-loading');
+        }
+    }
+
+    filterForm.addEventListener('change', applyFilter);
+    filterForm.addEventListener('submit', (event) => event.preventDefault());
+    clearButton.addEventListener('click', () => {
+        filterForm.from.value = '';
+        filterForm.to.value = '';
+        filterForm.querySelectorAll('[name="status"]').forEach((box) => { box.checked = false; });
+        applyFilter();
+    });
+
+    // 日付はカレンダーから選ぶだけにする（押したらカレンダーを開き、キーボードでは入力しない）
+    filterForm.querySelectorAll('input[type="date"]').forEach((input) => {
+        input.addEventListener('keydown', (event) => {
+            if (event.key !== 'Tab') event.preventDefault();
+        });
+        input.addEventListener('click', () => {
+            try { input.showPicker(); } catch (error) { /* 対応していないブラウザはそのまま */ }
         });
     });
 </script>

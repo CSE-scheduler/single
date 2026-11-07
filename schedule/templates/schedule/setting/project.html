@@ -515,7 +515,7 @@
             <ul class="errorlist" id="mail-modal-error" hidden><li>返信用メールアドレスを正しく入力してください。</li></ul>
         </div>
         <div class="button-group">
-            <button type="submit">送る設定にする</button>
+            <button type="submit">設定する</button>
         </div>
     </form>
 </dialog>
@@ -692,8 +692,9 @@
     const mailModalError = document.getElementById('mail-modal-error');
 
     mailEnabled.addEventListener('click', (event) => {
-        if (!mailEnabled.checked) return;  // オフにするときはそのまま保存する
-        event.preventDefault();             // チェックはモーダルで「送る設定にする」を押してから入れる
+        // オフにするとき・返信用メールアドレスがすでに入っているときは、そのまま保存する
+        if (!mailEnabled.checked || document.getElementById('id_mail_reply_to').value.trim()) return;
+        event.preventDefault();             // チェックはモーダルで「設定する」を押してから入れる
         mailModalInput.value = document.getElementById('id_mail_reply_to').value;
         mailModalError.hidden = true;
         mailModal.showModal();
@@ -701,6 +702,9 @@
     });
     mailEnabled.addEventListener('change', () => {
         mailDetail.disabled = !mailEnabled.checked;  // 保存（フォーム全体のchange）より先に切り替える
+        // メールを送るにはメールアドレスを取得する必要がある
+        const useMail = document.getElementById('id_use_mail');
+        if (mailEnabled.checked && useMail) useMail.checked = true;
     });
     document.getElementById('mail-modal-form').addEventListener('submit', (event) => {
         event.preventDefault();
