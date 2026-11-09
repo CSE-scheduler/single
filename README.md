@@ -2,8 +2,7 @@
 
 実験の参加日時を予約してもらうための Django アプリです。実験ごとに「プロジェクト」を作り、募集ページ・設定・予約をプロジェクトごとに分けて管理します。
 
-- 公開先：https://csescheduler.pythonanywhere.com/
-- 設定画面：https://csescheduler.pythonanywhere.com/setting/home （パスワードが必要）
+ダウンロードして、自分たちのサーバー・メールアドレスで使えます。設置の手順は **[docs/DEPLOY.md](docs/DEPLOY.md)** を見てください。
 
 ---
 
@@ -88,16 +87,22 @@
 
 ---
 
-## 手元で動かす
+## 手元で動かす（試す・開発する）
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python manage.py migrate
+.venv/bin/python manage.py make_admin_password   # 設定画面のパスワードを決める
+```
+
+表示された `SCHEDULE_ADMIN_PASSWORD_HASH = "..."` の1行を、`django_app/local_settings.py` という新しいファイルに書きます（手元ではこの1行だけで大丈夫です）。そのあと：
+
+```bash
 .venv/bin/python manage.py runserver
 ```
 
-`django_app/local_settings.py` がないときは、開発用の設定（SQLite、メールは送らずにターミナルに表示）で動きます。http://127.0.0.1:8000/setting/home を開いてください。
+http://127.0.0.1:8000/setting/home を開いてください。手元では、メールは送らずにターミナルに表示されます。
 
 テスト：
 
@@ -107,112 +112,24 @@ python3 -m venv .venv
 
 ---
 
-## PythonAnywhere へのデプロイ（初回）
+## 自分たちのサーバーに設置する
 
-アカウント `csescheduler` の「Consoles」から **Bash** を開いて：
+**[docs/DEPLOY.md](docs/DEPLOY.md)** に、次の内容をまとめています。
 
-```bash
-git clone https://github.com/CSE-scheduler/single.git
-cd single
-mkvirtualenv --python=python3.12 scheduler   # 仮想環境を作る（作ると自動で有効になる）
-pip install -r requirements.txt
+- 設定ファイル `django_app/local_settings.py` の書き方：SECRET_KEY・設定画面のパスワード・メール（Gmail／大学のメールサーバー）・データベース（SQLite／MySQL／PostgreSQL）・ロゴの差し替え
+- PythonAnywhere に置く手順
+- 自分の Linux サーバー（gunicorn + nginx）に置く手順
+- 設置したあとの確認、更新、バックアップ、引っ越し、うまく動かないとき
 
-# 本番の設定ファイルを作り、SECRET_KEY（とメールを送るならGmailの設定）を書く
-cp django_app/local_settings_example.py django_app/local_settings.py
-python -c "import secrets; print(secrets.token_urlsafe(50))"   # これを SECRET_KEY に貼る
-nano django_app/local_settings.py
+雛形のファイル：
 
-python manage.py migrate
-python manage.py collectstatic --noinput
-```
-
-次に「Web」タブで：
-
-1. **Add a new web app** → ドメインは `csescheduler.pythonanywhere.com` → **Manual configuration** → **Python 3.12**
-2. **Virtualenv** に `/home/csescheduler/.virtualenvs/scheduler` を入力
-3. **Source code** と **Working directory** に `/home/csescheduler/single` を入力
-4. **WSGI configuration file**（`/var/www/csescheduler_pythonanywhere_com_wsgi.py`）を開き、中身を全部消して次の内容にする
-
-   ```python
-   import os
-   import sys
-
-   path = '/home/csescheduler/single'
-   if path not in sys.path:
-       sys.path.insert(0, path)
-
-   os.environ['DJANGO_SETTINGS_MODULE'] = 'django_app.settings'
-
-   from django.core.wsgi import get_wsgi_application
-   application = get_wsgi_application()
-   ```
-
-5. **Static files** に URL `/static/`、Directory `/home/csescheduler/single/staticfiles` を追加
-6. **Force HTTPS** をオンにする
-7. 上の緑の **Reload** ボタンを押す
-
-https://csescheduler.pythonanywhere.com/setting/home を開き、設定画面のパスワードでログインできれば完了です。
-
-## 更新するとき
-
-手元で変更を GitHub に push したあと、PythonAnywhere の Bash で：
-
-```bash
-cd ~/single
-workon scheduler
-git pull
-python manage.py migrate
-python manage.py collectstatic --noinput
-```
-
-最後に「Web」タブで **Reload** を押します。`migrate` と `collectstatic` は、変更がなければ何もしないので、毎回実行して大丈夫です。
-
-CSS の URL にはファイルの更新時刻がつくので（`?v=...`）、更新後にブラウザに古い見た目が残ることはありません。
-
----
-
-## 設定
-
-### 本番の設定ファイル（`django_app/local_settings.py`）
-
-`local_settings_example.py` をコピーして作ります。パスワードが入るので、GitHub には上げません（`.gitignore` に登録済み）。
-
-| 項目 | 内容 |
+| ファイル | 内容 |
 | --- | --- |
-| `DEBUG` | 本番は `False` |
-| `SECRET_KEY` | ランダムな長い文字列（必須） |
-| `ALLOWED_HOSTS` | `["csescheduler.pythonanywhere.com"]` |
-| `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | メールを送るときの Gmail アドレスとアプリパスワード |
-| `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` | `True`（Force HTTPS とあわせて） |
-| `MYSQL` | MySQL を使うときだけ（書かなければ `db.sqlite3`）。`requirements.txt` の `mysqlclient` の行も有効にする |
-
-書き換えたら、「Web」タブで **Reload** を押します。
-
-### 送信用の Gmail
-
-メールは `local_settings.py` に書いた Gmail アカウントから送ります（PythonAnywhere の無料プランでも使えます）。書いていないあいだはメールを送らず、編集画面の「予約確認メール」に赤字で注意が出ます。
-
-1. 送信に使う Google アカウントで2段階認証をオンにし、「アプリパスワード」（16文字）を作る
-2. `local_settings.py` に書いて、Reload する
-
-   ```python
-   EMAIL_HOST_USER = "送信用のGmailアドレス"
-   EMAIL_HOST_PASSWORD = "アプリパスワード"
-   ```
-
-メールが届かないときは、次を確認してください。
-
-- 編集画面で「予約確認メールを送る」がオンになっているか（赤字のエラーがあると保存されません）
-- 迷惑メールフォルダに入っていないか
-- 「Web」タブの **Error log** に「予約のメールを送れませんでした」が出ていないか
-
-### 設定画面のパスワード
-
-`django_app/settings.py` の `SCHEDULE_ADMIN_PASSWORD_HASH` に、パスワードをハッシュにした値を書いています（GitHub に平文を置かないため）。変えるときは、次のコマンドで作った値に置き換えて push し、PythonAnywhere で更新します。
-
-```bash
-python manage.py shell -c "from django.contrib.auth.hashers import make_password; print(make_password('新しいパスワード'))"
-```
+| `django_app/local_settings_example.py` | 設定ファイルの雛形（コピーして `local_settings.py` にする） |
+| `deploy/pythonanywhere_wsgi.py` | PythonAnywhere の WSGI 設定 |
+| `deploy/gunicorn.service` | Linux サーバーで動かし続けるための systemd の設定 |
+| `deploy/nginx.conf` | nginx（HTTPS・静的ファイル）の設定 |
+| `deploy/backup_sqlite.sh` | SQLite のデータベースのバックアップ |
 
 ---
 
@@ -220,8 +137,8 @@ python manage.py shell -c "from django.contrib.auth.hashers import make_password
 
 ```
 django_app/
-  settings.py                 設定（本番の値は local_settings.py で上書き）
-  local_settings_example.py   本番の設定ファイルの見本
+  settings.py                 設定（サーバーごとの値は local_settings.py で上書き）
+  local_settings_example.py   設定ファイルの雛形
 schedule/
   models.py         プロジェクト・枠・予約
   calendar.py       カレンダーの表と、枠が予約できるかの判定（所要時間・締め切り・バッファ）
@@ -230,11 +147,14 @@ schedule/
   forms.py          設定と予約の入力フォーム
   mail.py           予約確認メール・キャンセルのメール
   tests.py          テスト
+  management/commands/make_admin_password.py   設定画面のパスワードを作るコマンド
   templates/schedule/          参加者の画面
   templates/schedule/setting/  設定画面
-  static/schedule/css/         main.css（demogame と同じ見た目）と schedule.css
-  static/schedule/image/       ロゴ・favicon
+  static/schedule/css/         main.css と schedule.css
+  static/schedule/image/       初期のロゴ・favicon
+deploy/                        サーバーの設定の雛形
+docs/DEPLOY.md                 設置ガイド
 ```
 
 - 枠の時間帯（8:00〜23:00）や、自動で作る日数（90日）は `schedule/models.py` の `START_HOUR`・`N_SLOTS`・`DAYS_AHEAD` で変えられます。
-- 時刻は日本時間（`TIME_ZONE = "Asia/Tokyo"`）で扱います。
+- 時刻は `TIME_ZONE`（初期値は日本時間）のまま扱います。

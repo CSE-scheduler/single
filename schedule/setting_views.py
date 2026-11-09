@@ -39,7 +39,11 @@ def login(request):
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = ''
     error = ''
-    if request.method == 'POST':
+    if not settings.SCHEDULE_ADMIN_PASSWORD_HASH:
+        # パスワードを決めていないサーバー（設置した直後など）
+        error = ('設定画面のパスワードが設定されていません。サーバーで python manage.py make_admin_password を実行し、'
+                 '表示された1行を django_app/local_settings.py に書いてください。')
+    elif request.method == 'POST':
         password = request.POST.get('password', '')
         if password and check_password(password, settings.SCHEDULE_ADMIN_PASSWORD_HASH):
             request.session.cycle_key()
@@ -187,7 +191,7 @@ def project_edit(request, project):
         ),
         'participant_url': request.build_absolute_uri(reverse('consent', args=[stored.name])),
         # local_settings.py に送信用のGmailを書いていないと、メールは送られない
-        'mail_ready': bool(settings.EMAIL_HOST_PASSWORD),
+        'mail_ready': settings.SEND_EMAIL,
         'placeholders': PLACEHOLDERS,
     })
 

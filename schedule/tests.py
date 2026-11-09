@@ -880,3 +880,41 @@ class CompleteButtonTests(TestCase):
         project.complete_button_enabled = True
         project.save()
         self.assertContains(self.client.get(reverse('complete', args=['btn'])), 'アンケートへ')
+
+
+class SetupTests(TestCase):
+    """自分たちのサーバーに設置するときの設定"""
+
+    @override_settings(SCHEDULE_ADMIN_PASSWORD_HASH='')
+    def test_login_without_password_setting(self):
+        page = self.client.get(reverse('setting_login'))
+        self.assertContains(page, 'make_admin_password')
+        # パスワードを決めていないあいだは、何を入れてもログインできない
+        self.client.post(reverse('setting_login'), {'password': ''})
+        self.assertRedirects(self.client.get(reverse('setting_home')),
+                             reverse('setting_login') + '?next=/setting/home', fetch_redirect_response=False)
+        # 参加者の画面は使える
+        Project.objects.create(name='p1').ensure_slots()
+        self.assertEqual(self.client.get(reverse('consent', args=['p1'])).status_code, 200)
+
+    def test_make_admin_password(self):
+        from io import StringIO
+        from unittest import mock
+
+        from django.contrib.auth.hashers import check_password
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        out = StringIO()
+        with mock.patch('schedule.management.commands.make_admin_password.getpass', side_effect=['secret-pass', 'secret-pass']):
+            call_command('make_admin_password', stdout=out)
+        line = [l for l in out.getvalue().splitlines() if l.startswith('SCHEDULE_ADMIN_PASSWORD_HASH')][0]
+        self.assertTrue(check_password('secret-pass', line.split('"')[1]))
+        with mock.patch('schedule.management.commands.make_admin_password.getpass', side_effect=['secret-pass', 'other-pass']):
+            with self.assertRaises(CommandError):
+                call_command('make_admin_password', stdout=StringIO())
+
+    @override_settings(SITE_NAME='Test Lab', SITE_LOGO='schedule/image/cse-logo.png')
+    def test_site_name(self):
+        Project.objects.create(name='p2').ensure_slots()
+        self.assertContains(self.client.get(reverse('consent', args=['p2'])), 'alt="Test Lab"')

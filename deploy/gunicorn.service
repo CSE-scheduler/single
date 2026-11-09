@@ -1,0 +1,25 @@
+# Linux サーバー（Ubuntu など）で、アプリを gunicorn で動かし続けるための systemd の設定の雛形。
+#
+#   1. <ユーザー名> と /srv/scheduler（プロジェクトのフォルダ）を書き換える
+#   2. sudo cp deploy/gunicorn.service /etc/systemd/system/scheduler.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now scheduler
+#   4. 状態の確認：sudo systemctl status scheduler　／　ログ：sudo journalctl -u scheduler
+#   更新したあとは：sudo systemctl restart scheduler
+
+[Unit]
+Description=Scheduler (Django + gunicorn)
+After=network.target
+
+[Service]
+User=<ユーザー名>
+Group=www-data
+WorkingDirectory=/srv/scheduler
+# 仮想環境の gunicorn を使う（pip install gunicorn しておく）
+ExecStart=/srv/scheduler/.venv/bin/gunicorn django_app.wsgi:application \
+    --bind 127.0.0.1:8000 \
+    --workers 2 \
+    --timeout 60
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

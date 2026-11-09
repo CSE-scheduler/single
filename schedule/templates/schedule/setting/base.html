@@ -171,10 +171,10 @@
 <header class="site-header admin-header">
     <div class="admin-header__left">
         {% if request.session.schedule_admin %}
-        <a class="site-logo-link" href="{% url 'setting_home' %}" title="プロジェクト一覧"><img class="site-logo" src="{% static_v 'schedule/image/cse-logo.png' %}" alt="CSE Scheduler" width="512" height="102"></a>
+        <a class="site-logo-link" href="{% url 'setting_home' %}" title="プロジェクト一覧"><img class="site-logo" src="{% static_v site_logo %}" alt="{{ site_name }}"></a>
         <nav class="breadcrumb" aria-label="現在地">{% block breadcrumb %}{% endblock %}</nav>
         {% else %}
-        <img class="site-logo" src="{% static_v 'schedule/image/cse-logo.png' %}" alt="CSE Scheduler" width="512" height="102">
+        <img class="site-logo" src="{% static_v site_logo %}" alt="{{ site_name }}">
         {% endif %}
     </div>
     {% if request.session.schedule_admin %}

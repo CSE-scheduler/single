@@ -1,4 +1,10 @@
 Django~=5.1.0
 jpholiday==0.1.10
-# MySQLを使うときだけ、次の行の # を外す（SQLiteのままなら不要）
+
+# ---- 必要なときだけ、行の先頭の # を外して pip install -r requirements.txt ----
+# MySQL を使うとき
 # mysqlclient==2.2.7
+# PostgreSQL を使うとき
+# psycopg[binary]==3.2.3
+# 自分の Linux サーバーで gunicorn + nginx で動かすとき（PythonAnywhere では不要）
+# gunicorn==23.0.0

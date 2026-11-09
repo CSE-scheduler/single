@@ -137,7 +137,7 @@
         <div class="form-group">
             <label for="id_name">プロジェクト名</label>
             <input type="text" name="name" id="id_name" maxlength="100" value="{{ form.name.value|default:'' }}" placeholder="例：exp2026-A" required>
-            <p class="note">募集ページのURLになり、あとから変えられません（例：https://csescheduler.pythonanywhere.com/<b>exp2026-A</b>/）。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
+            <p class="note">募集ページのURLになり、あとから変えられません（例：{{ request.scheme }}://{{ request.get_host }}/<b>exp2026-A</b>/）。使えるのはアルファベット・数字・記号（{{ symbols }}）だけです。</p>
             {{ form.name.errors }}
         </div>
         <div class="button-group">

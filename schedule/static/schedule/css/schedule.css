@@ -67,6 +67,9 @@ html body {
     display: block;
     width: auto;
     height: 28px;
+    max-width: 240px;
+    object-fit: contain;
+    object-position: left center;
 }
 
 /* ---- ボタン ---- */

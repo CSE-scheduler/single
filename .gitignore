@@ -1,10 +1,14 @@
 # パスワードが入る設定ファイル
 django_app/local_settings.py
 
-# データベース（参加者のデータが入る）
+# データベースとバックアップ（参加者のデータが入る）
 db.sqlite3
+backups/
 *.sqlite3
 *.sql
+
+# 研究室ごとのロゴなど（site_static/ に置いた画像は、そのサーバーだけで使う）
+site_static/
 
 # collectstatic で集めた静的ファイル
 staticfiles/
